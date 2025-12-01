@@ -474,7 +474,7 @@ if not st.session_state.history_cache:
         <div style="text-align: center; color: gray; margin-top: 50px;">
             <h3>👋 Welcome to Victor's Calculator</h3>
             <p>Start by typing a command below or open the sidebar for help.</p>
-            <p><small>Note: History is temporary and private to this tab.</small></p>
+            <p><small>Note: History is temporary and private to this tab, make sure to save your work using download Log in the Log tab in the sidebar.</small></p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -821,3 +821,4 @@ if new_cmd:
 
 # Scroll to bottom
 st.markdown('<script>window.scrollTo(0,document.body.scrollHeight);</script>', unsafe_allow_html=True)
+
