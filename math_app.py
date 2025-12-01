@@ -247,7 +247,7 @@ with st.sidebar:
         uploaded_log = st.file_uploader("📂 Upload Log", type=["txt", "docx", "doc"], label_visibility="collapsed")
         
         # Explanatory Note
-        st.info("ℹ️ **Load Session:** Upload a `.txt` or `.docx` file to restore your previous calculations into the log below.")
+        st.info("ℹ️ Restore Session: Upload a .txt or .docx file to recover your history, or simply paste your calculations directly into the log below.")
 
         if uploaded_log and st.button("📥 Load File into Log", use_container_width=True):
             content = ""
@@ -474,7 +474,7 @@ if not st.session_state.history_cache:
         <div style="text-align: center; color: gray; margin-top: 50px;">
             <h3>👋 Welcome to Victor's Calculator</h3>
             <p>Start by typing a command below or open the sidebar for help.</p>
-            <p><small>Note: History is temporary and private to this tab, make sure to save your work using download Log in the Log tab in the sidebar.</small></p>
+            <p><small>⚠️ Note: This session is temporary and private. Please save your work using the Download Log button in the sidebar.</small></p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -821,4 +821,5 @@ if new_cmd:
 
 # Scroll to bottom
 st.markdown('<script>window.scrollTo(0,document.body.scrollHeight);</script>', unsafe_allow_html=True)
+
 
