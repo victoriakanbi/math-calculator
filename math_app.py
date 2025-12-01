@@ -183,8 +183,10 @@ with st.sidebar:
         st.divider()
         if st.button("🗑️ Clear History", type="primary", use_container_width=True):
             st.session_state.history_cache = ""
+            # IMPORTANT: We can't clear log_area_widget here if it's already rendered,
+            # but since we rerun immediately, the fresh run will handle it.
             if 'log_area_widget' in st.session_state:
-                st.session_state.log_area_widget = ""
+                del st.session_state.log_area_widget
             st.rerun()
 
     with tab_const:
@@ -232,7 +234,7 @@ with st.sidebar:
         | **Isolate** | Rearrange physics formulas | `isolate F=G*m1*m2/r^2, m1` |
         """, unsafe_allow_html=True)
 
-    # --- RESTORED LOG TAB (WITH INPUT) ---
+    # --- RESTORED LOG TAB (FIXED) ---
     with tab_log:
         st.markdown("### 📜 Session History")
         st.info("This history is private to your current session. You can edit it here.")
@@ -242,9 +244,14 @@ with st.sidebar:
             new_val = st.session_state.log_area_widget
             if new_val.strip().lower().endswith("clear"):
                 st.session_state.history_cache = ""
-                st.session_state.log_area_widget = ""
+                st.session_state.log_area_widget = "" # This is safe because it runs in callback
             else:
                 st.session_state.history_cache = new_val
+
+        # --- KEY FIX: SYNC WIDGET WITH CACHE BEFORE RENDER ---
+        # This makes sure that if the cache changed (from bottom input), the widget reflects it.
+        if 'history_cache' in st.session_state:
+             st.session_state.log_area_widget = st.session_state.history_cache
 
         # 1. The editable log
         st.text_area(
@@ -765,15 +772,13 @@ new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to k
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
         st.session_state.history_cache = ""
-        st.session_state.log_area_widget = ""
+        # We don't touch log_area_widget here to avoid error.
+        # It will update on the next run because of the sync logic at the top.
     else:
         if st.session_state.history_cache:
             st.session_state.history_cache += "\n" + new_cmd
         else:
             st.session_state.history_cache = new_cmd
-        # FORCE SYNC WIDGET
-        if 'log_area_widget' in st.session_state:
-            st.session_state.log_area_widget = st.session_state.history_cache
             
     st.rerun()
 
