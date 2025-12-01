@@ -23,13 +23,14 @@ st.markdown("""
     h1 {font-size: 2.2rem !important;}
     div[data-testid="stMetricValue"] {font-size: 1.1rem !important;}
     .stAlert {padding: 0.5rem;}
-    .stButton button {padding: 0px 10px;}
+    .stButton button {padding: 0px 10px;} /* Compact buttons for Sig Figs */
 </style>
 """, unsafe_allow_html=True)
 
 # --- 2. STATE MANAGEMENT (RAM ONLY) ---
 if 'ans' not in st.session_state: st.session_state.ans = 0
 if 'sig_figs' not in st.session_state: st.session_state.sig_figs = 5
+# HISTORY IS NOW STORED IN RAM ONLY - PRIVATE PER USER SESSION
 if 'history_cache' not in st.session_state: st.session_state.history_cache = ""
 
 # --- 3. CONSTANTS LIBRARY ---
@@ -119,25 +120,32 @@ UNIT_CATEGORIES = {
 def perform_conversion(val, u_from, u_to):
     u_from = u_from.lower().replace(" ", "")
     u_to = u_to.lower().replace(" ", "")
+    
     temps = ['c', 'f', 'k', 'r']
     if u_from in temps and u_to in temps:
         if u_from == 'c': k = val + 273.15
         elif u_from == 'f': k = (val - 32) * 5/9 + 273.15
         elif u_from == 'r': k = val * 5/9
         elif u_from == 'k': k = val
+        
         if u_to == 'c': return k - 273.15, "Temperature"
         elif u_to == 'f': return (k - 273.15) * 9/5 + 32, "Temperature"
         elif u_to == 'r': return k * 9/5, "Temperature"
         elif u_to == 'k': return k, "Temperature"
+        
     for category, units in UNIT_CATEGORIES.items():
         if u_from in units and u_to in units:
-            return val * units[u_from] / units[u_to], category
+            base_val = val * units[u_from]
+            final_val = base_val / units[u_to]
+            return final_val, category
+            
     return None, None
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("🧮 Victor's Calculator")
-    tab_settings, tab_const, tab_help = st.tabs(["⚙️ Set", "⚛️ Const", "📝 Help"])
+    
+    tab_settings, tab_const, tab_help, tab_log = st.tabs(["⚙️ Set", "⚛️ Const", "📝 Help", "📜 Log"])
     
     with tab_settings:
         st.subheader("Display")
@@ -147,6 +155,7 @@ with st.sidebar:
             st.session_state.min_x = c1.number_input("Min X", value=st.session_state.min_x, step=1.0)
             if 'max_x' not in st.session_state: st.session_state.max_x = 10.0
             st.session_state.max_x = c2.number_input("Max X", value=st.session_state.max_x, step=1.0)
+            
             c3, c4 = st.columns(2)
             if 'min_y' not in st.session_state: st.session_state.min_y = -5.0
             st.session_state.min_y = c3.number_input("Min Y", value=st.session_state.min_y, step=1.0)
@@ -156,25 +165,44 @@ with st.sidebar:
         st.subheader("Calculation")
         trig_mode = st.radio("Angle Unit", ["Radians", "Degrees"], horizontal=True)
         
+        # --- SIG FIGS UI ---
+        st.caption("Significant Figures")
         c_sf1, c_sf2, c_sf3 = st.columns([1, 2, 1])
         if c_sf1.button("➖", use_container_width=True):
             if st.session_state.sig_figs > 1: st.session_state.sig_figs -= 1
+        
         c_sf2.markdown(f"<div style='text-align:center; padding-top:5px; font-weight:bold; border:1px solid #444; border-radius:5px;'>{st.session_state.sig_figs}</div>", unsafe_allow_html=True)
+        
         if c_sf3.button("➕", use_container_width=True):
             if st.session_state.sig_figs < 20: st.session_state.sig_figs += 1
         
         use_sci = st.checkbox("Scientific Notation", value=False)
+        
         st.divider()
         if 'table_step' not in st.session_state: st.session_state.table_step = 1.0
-        st.session_state.table_step = st.number_input("Table Step (Δx)", value=st.session_state.table_step, step=0.1, format="%.3f")
-        show_intersect = st.checkbox("🔴 Show Intersections", value=True)
+        st.session_state.table_step = st.number_input("Table Step (Δx)", value=st.session_state.table_step, step=0.1, min_value=0.001, format="%.3f")
+        show_intersect = st.checkbox("🔴 Show Graph Intersections", value=True)
+        
         st.divider()
-        # CLOUD MODE: CLEAR RAM
         if st.button("🗑️ Clear History", type="primary", use_container_width=True):
-            st.session_state.history_cache = ""
+            st.session_state.history_cache = "" # CLEAR RAM ONLY
             st.rerun()
 
     with tab_const:
+        st.markdown("### 🛠️ Supported Units")
+        st.caption("Auto-detects category (e.g., Mass, Pressure)")
+        with st.expander("View Unit Keys", expanded=False):
+            st.markdown("""
+            **Pres:** `Pa, kPa, MPa, psi, atm, bar, mmHg`  
+            **Vol:** `m3, ft3, in3, L, mL, gal`  
+            **Len:** `m, ft, in, km, mi, yd`  
+            **Mass:** `kg, g, lbm, slug, tonne`  
+            **Force:** `N, kN, lbf, kip`  
+            **Energy:** `J, kJ, Btu, cal, kWh, eV`  
+            **Power:** `W, kW, hp`  
+            **Temp:** `C, F, K, R`
+            """)
+        st.divider()
         st.caption("Constants Library")
         for category, items in CONSTANTS.items():
             with st.expander(category, expanded=False):
@@ -185,45 +213,120 @@ with st.sidebar:
 
     with tab_help:
         st.markdown("### 📖 Command Reference")
-        st.info("Commands: `graph`, `solve`, `diff`, `integ`, `deriv`, `calc`, `isolate`, `approx`, `convert`, `lap`, `ilap`")
+        st.info("Most commands work without the keyword (e.g., just type `x^2+y^2=9`).")
+        st.markdown("""
+        | Command | Description & Syntax | Example |
+        | :--- | :--- | :--- |
+        | **Clear** | Wipes history immediately | `clear` |
+        | **Convert** | Convert units (Implicit supported) | `14.7 psi to kPa` |
+        | **Temp** | Temperature conversion | `100 F to C` |
+        | **Laplace** | Laplace ($t \\to s$) or ODE | `lap t^2` or `lap y''+y=0, y(0)=1` |
+        | **Inv Lap** | Inverse Laplace ($s \\to t$) | `ilap 1/s^2` |
+        | **PartFrac**| Partial Fraction Decomposition | `partfrac 1/(s^2+s)` |
+        | **Calc** | Basic Math & Constants | `calc 10 * g + P_atm` |
+        | **Approx** | Decimal approximation | `approx pi + sqrt(2)` |
+        | **Graph** | Plot functions (Explicit/Implicit) | `graph sin(x), x^2+y^2=9` |
+        | **Solve** | Find Roots or Solve Systems | `solve x^2-4=0`<br>`solve x+y=5, x-y=1` |
+        | **Diff Eq** | Solve ODEs (General or IVP) | `diff y''+y=0`<br>`diff y'=y, y(0)=1` |
+        | **Integ** | Integral (Definite/Indefinite) | `integ x^2` (Indef)<br>`integ x^2, 0, 5` (Def) |
+        | **Deriv** | Derivative (Formula/Point/Imp) | `deriv x^3` (Formula)<br>`deriv x^2, 2` (Point)<br>`deriv x^2+y^2=1` (Implicit) |
+        | **Isolate** | Rearrange physics formulas | `isolate F=G*m1*m2/r^2, m1` |
+        """, unsafe_allow_html=True)
+
+# --- MAIN LAYOUT ---
+history_container = st.container()
+
+# --- INPUT SYSTEM (RAM ONLY) ---
+# We now load from st.session_state.history_cache INSTEAD of a file
+user_input = st.text_area("Raw Input Log", height=300, value=st.session_state.history_cache, help="Edit this to modify past commands")
+
+# Update cache if user types something
+if user_input != st.session_state.history_cache:
+    st.session_state.history_cache = user_input
+    # NEW: INTERCEPT 'CLEAR' COMMAND
+    if user_input.strip().lower().endswith("clear"):
+        st.session_state.history_cache = ""
+        st.rerun()
+    st.rerun()
+
+if st.button("🔄 Rerun Log", use_container_width=True):
+    st.rerun()
+
+# --- WELCOME SCREEN ---
+if not st.session_state.history_cache:
+    with history_container:
+        st.markdown("""
+        <div style="text-align: center; color: gray; margin-top: 50px;">
+            <h3>👋 Welcome to Victor's Calculator</h3>
+            <p>Start by typing a command below or open the sidebar for help.</p>
+            <p><small>Note: History is temporary and private to this tab.</small></p>
+        </div>
+        """, unsafe_allow_html=True)
 
 # --- MEMORY SETUP ---
 def np_heaviside(x): return np.heaviside(x, 1)
 def np_delta(x): return np.zeros_like(x) 
 
+# Base Functions (Numeric)
 calc_memory = {"np": np, "math": np, "pi": np.pi, "e": np.e, 
                "sin": np.sin, "cos": np.cos, "tan": np.tan, 
                "sqrt": np.sqrt, "log": np.log, "exp": np.exp,
                "ln": np.log, "step": np_heaviside, "delta": np_delta}
 
+# INJECT CONSTANTS INTO NUMERIC MEMORY
 for cat in CONSTANTS.values():
     for key, val in cat.items():
         calc_memory[key] = val[0]
 
+# SYMBOLIC MEMORY
 letters = string.ascii_letters
 sym_memory = {letter: sp.Symbol(letter) for letter in letters}
 sym_memory.update({
     "sp": sp, "exp": sp.exp, "sqrt": sp.sqrt, "log": sp.log, "pi": sp.pi,
     "diff": sp.diff, "oo": sp.oo, "e": sp.E, "ln": sp.log,
     "step": sp.Heaviside, "delta": sp.DiracDelta, "erf": sp.erf, "I": sp.I,
-    "y0": sp.Symbol("y0"), "yp0": sp.Symbol("yp0"), "Y": sp.Symbol("Y")
+    "y0": sp.Symbol("y0"), "yp0": sp.Symbol("yp0"), 
+    "Y": sp.Symbol("Y")
 })
 
+# INJECT CONSTANT NAMES INTO SYMBOLIC MEMORY
 for cat in CONSTANTS.values():
     for key in cat.keys():
-        if key not in sym_memory: sym_memory[key] = sp.Symbol(key)
+        if key not in sym_memory:
+            sym_memory[key] = sp.Symbol(key)
 
+# TRIG UNIT LOGIC
 if trig_mode == "Degrees":
-    calc_memory.update({'sin': lambda x: np.sin(np.deg2rad(x)), 'cos': lambda x: np.cos(np.deg2rad(x)), 'tan': lambda x: np.tan(np.deg2rad(x))})
-    sym_memory.update({'sin': lambda x: sp.sin(x * sp.pi / 180), 'cos': lambda x: sp.cos(x * sp.pi / 180), 'tan': lambda x: sp.tan(x * sp.pi / 180)})
+    calc_memory['sin'] = lambda x: np.sin(np.deg2rad(x))
+    calc_memory['cos'] = lambda x: np.cos(np.deg2rad(x))
+    calc_memory['tan'] = lambda x: np.tan(np.deg2rad(x))
+    calc_memory['asin'] = lambda x: np.rad2deg(np.arcsin(x))
+    calc_memory['acos'] = lambda x: np.rad2deg(np.arccos(x))
+    calc_memory['atan'] = lambda x: np.rad2deg(np.arctan(x))
+    sym_memory['sin'] = lambda x: sp.sin(x * sp.pi / 180)
+    sym_memory['cos'] = lambda x: sp.cos(x * sp.pi / 180)
+    sym_memory['tan'] = lambda x: sp.tan(x * sp.pi / 180)
+    sym_memory['asin'] = lambda x: 180/sp.pi * sp.asin(x)
+    sym_memory['acos'] = lambda x: 180/sp.pi * sp.acos(x)
+    sym_memory['atan'] = lambda x: 180/sp.pi * sp.atan(x)
+else:
+    calc_memory.update({'sin': np.sin, 'cos': np.cos, 'tan': np.tan, 'asin': np.arcsin, 'acos': np.arccos, 'atan': np.arctan})
+    sym_memory.update({'sin': sp.sin, 'cos': sp.cos, 'tan': sp.tan, 'asin': sp.asin, 'acos': sp.acos, 'atan': sp.atan})
 
 calc_sym_memory = sym_memory.copy()
 calc_sym_memory['f'] = sp.Function('f')
-constant_subs = {sym_memory[k]: v[0] for c in CONSTANTS.values() for k,v in c.items() if k in sym_memory}
+
+# BRIDGE FOR CALCULATOR MODE
+constant_subs = {}
+for cat in CONSTANTS.values():
+    for key, val in cat.items():
+        if key in sym_memory and key not in ['pi', 'e']:
+            constant_subs[sym_memory[key]] = val[0]
 
 # --- HELPERS ---
 def smart_parse(text):
-    try: return parse_expr(text, transformations=(standard_transformations + (implicit_multiplication_application,)), local_dict=sym_memory)
+    transformations = (standard_transformations + (implicit_multiplication_application,))
+    try: return parse_expr(text, transformations=transformations, local_dict=sym_memory)
     except: return sp.sympify(text, locals=sym_memory)
 
 def clean_input(text):
@@ -241,6 +344,25 @@ def translate_diff_eq(text):
     text = re.sub(r'\by\b', func_str, text) 
     return text, var
 
+def parse_ivp(ic_list, var_name):
+    ics = {}
+    f_sym = calc_sym_memory['f']
+    var_sym = sym_memory[var_name]
+    for ic in ic_list:
+        if "=" not in ic: continue
+        try:
+            match = re.search(r"y('*)\s*\((.*?)\)\s*=\s*(.*)", ic)
+            if match:
+                primes, point_str, val_str = match.groups()
+                point = eval(point_str, {}, calc_memory)
+                val = eval(val_str, {}, calc_memory)
+                order = len(primes)
+                if order == 0: key = f_sym(var_sym).subs(var_sym, point)
+                else: key = f_sym(var_sym).diff(var_sym, order).subs(var_sym, point)
+                ics[key] = val
+        except: continue
+    return ics
+
 def format_number(val):
     try:
         val_float = float(val)
@@ -248,44 +370,68 @@ def format_number(val):
         else: return f"{val_float:.{st.session_state.sig_figs}g}"
     except: return str(val)
 
-# --- DISPLAY ---
-history_container = st.container()
-
+# --- UI HELPER: CARD DISPLAY ---
 def display_answer(label, exact_val, warning=None):
+    # SAVE RESULT TO 'ANS'
     st.session_state.ans = exact_val
+    
     with history_container.container(border=True):
-        c1, c2 = st.columns([0.05, 0.95])
-        c1.markdown("📝")
-        with c2:
+        col_icon, col_content = st.columns([0.05, 0.95])
+        with col_icon:
+            st.markdown("📝") # Icon
+        with col_content:
             st.markdown(f"**{label}**")
             if warning: st.caption(f"⚠️ {warning}")
-            try: latex_str = sp.latex(exact_val)
+            
+            try: latex_str = sp.latex(exact_val).replace("\\log", "\\ln").replace("\\theta", "\\text{step}").replace("\\delta", "\\delta")
             except: latex_str = str(exact_val)
-            st.latex(latex_str)
-            if hasattr(exact_val, 'evalf'): st.caption(f"Decimal: {format_number(exact_val)}")
+            
+            if hasattr(exact_val, 'is_number') and exact_val.is_number:
+                c1, c2 = st.columns([2, 1])
+                c1.latex(latex_str)
+                c2.metric("Decimal", format_number(exact_val))
+            
+            elif isinstance(exact_val, dict):
+                items = [f"{sp.latex(k)} = {sp.latex(v).replace('\\log', '\\ln')}" for k, v in exact_val.items()]
+                st.latex(", ".join(items))
+                vals = []
+                for k,v in exact_val.items():
+                    if hasattr(v, 'is_number') and v.is_number:
+                        vals.append(f"{k} ≈ {format_number(v)}")
+                if vals: st.caption(" | ".join(vals))
+            
+            elif isinstance(exact_val, list):
+                 if exact_val and isinstance(exact_val[0], dict):
+                     for i, s in enumerate(exact_val):
+                         items = [f"{sp.latex(k)}={sp.latex(v)}" for k,v in s.items()]
+                         st.latex(f"Set {i+1}: " + ", ".join(items))
+                 else:
+                     st.latex(", ".join([sp.latex(r).replace('\\log', '\\ln') for r in exact_val]))
+                     vals = [format_number(v) for v in exact_val if hasattr(v, 'is_number') and v.is_number]
+                     if vals: st.caption("Decimals: " + ", ".join(vals))
+            else: 
+                st.latex(latex_str)
 
-# --- MAIN INPUT (RAM ONLY) ---
-user_input = st.text_area("Input Log", height=300, value=st.session_state.history_cache, help="Type commands here")
-
-# If input changes, update RAM and rerun to process
-if user_input != st.session_state.history_cache:
-    st.session_state.history_cache = user_input
-    st.rerun()
-
-# --- PROCESSING LOOP ---
-lines = user_input.split('\n')
+# --- MAIN LOGIC LOOP ---
+lines = st.session_state.history_cache.split('\n')
 lines = [l for l in lines if l.strip()]
-COLOR_CYCLE = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA']
+
+COLOR_CYCLE = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
 
 for i, line in enumerate(lines):
     line = line.strip()
     raw_content = line 
     cmd = "calc:"
     
+    # --- ANS SUBSTITUTION LOGIC (IMPROVED) ---
     if 'ans' in line.lower() and st.session_state.ans is not None:
         val_to_sub = st.session_state.ans
-        if hasattr(val_to_sub, 'rhs'): val_to_sub = val_to_sub.rhs
-        line = re.sub(r'\bans\b', f"({val_to_sub})", line, flags=re.IGNORECASE)
+        # If 'ans' is an Equation (e.g. f(t) = ...), extract just the RHS for graphing/calc
+        if hasattr(val_to_sub, 'rhs'):
+            val_to_sub = val_to_sub.rhs
+        
+        ans_str = f"({str(val_to_sub)})"
+        line = re.sub(r'\bans\b', ans_str, line, flags=re.IGNORECASE)
         raw_content = line
 
     if ":" in line:
@@ -293,80 +439,157 @@ for i, line in enumerate(lines):
         cmd = parts[0].strip().lower() + ":"
         raw_content = parts[1].strip()
     else:
-        first = line.split(" ")[0].lower()
+        first_word = line.split(" ")[0].lower()
         KNOWN = ["graph", "solve", "diff", "integ", "deriv", "calc", "isolate", "approx", "convert", "lap", "ilap", "partfrac"]
-        if first in KNOWN:
-            cmd = first + ":"
-            raw_content = line[len(first):].strip()
+        
+        if first_word in KNOWN:
+            cmd = first_word + ":"
+            raw_content = line[len(first_word):].strip()
+        elif re.match(r"^[\(\)\d\.\-\+eE]+\s*[a-zA-Z\d_]+\s+to\s+[a-zA-Z\d_]+", line, re.IGNORECASE):
+            cmd = "convert:"
+            raw_content = line
+        elif "y'" in line or re.search(r"y\s*\(", line): cmd = "diff:"
         elif "=" in line: cmd = "solve:"
 
     try:
-        if cmd == "calc:":
-            res = smart_parse(clean_input(raw_content))
-            if hasattr(res, 'subs'): res = res.subs(constant_subs)
-            display_answer(f"Calc: {line}", res)
-            
-        elif cmd == "solve:":
-            l, r = clean_input(raw_content).split("=")
-            res = sp.solve(sp.Eq(smart_parse(l), smart_parse(r)))
-            display_answer(f"Solve: {line}", res)
+        # --- LAPLACE TRANSFORM ---
+        if cmd == "lap:":
+            eq_part_clean = clean_input(raw_content)
+            if "," in eq_part_clean:
+                parts = eq_part_clean.split(",")
+                eq_part = parts[0]
+                cond_parts = parts[1:]
+            else:
+                eq_part = eq_part_clean
+                cond_parts = []
 
+            if "y" in eq_part and ("'" in eq_part or "=" in eq_part):
+                if "=" in eq_part:
+                    lhs_str, rhs_str = eq_part.split("=")
+                else:
+                    lhs_str, rhs_str = eq_part, "0"
+
+                def apply_laplace_rules(text):
+                    text = text.replace("y''", "(s**2*Y - s*y0 - yp0)")
+                    text = text.replace("y'", "(s*Y - y0)")
+                    text = re.sub(r'\by\b', 'Y', text)
+                    return text
+
+                def transform_side(side_str):
+                    if "y" in side_str or "Y" in side_str:
+                        alg_str = apply_laplace_rules(side_str)
+                        return smart_parse(alg_str)
+                    else:
+                        val = smart_parse(side_str)
+                        if val == 0: return 0
+                        return sp.laplace_transform(val, sym_memory['t'], sym_memory['s'], noconds=True)
+
+                lhs_expr = transform_side(lhs_str)
+                rhs_expr = transform_side(rhs_str)
+                
+                subs_dict = {}
+                for cond in cond_parts:
+                    c_clean = cond.replace("y*(0)", "y0").replace("y(0)", "y0")
+                    c_clean = c_clean.replace("y'*(0)", "yp0").replace("y'(0)", "yp0").replace(" ", "")
+                    if "=" in c_clean:
+                        l_c, r_c = c_clean.split("=")
+                        subs_dict[smart_parse(l_c)] = smart_parse(r_c)
+
+                full_eq = sp.Eq(lhs_expr, rhs_expr)
+                if subs_dict:
+                    full_eq = full_eq.subs(subs_dict)
+                
+                try:
+                    Y_sol = sp.solve(full_eq, sym_memory['Y'])
+                    if Y_sol:
+                        display_answer(f"ℒ Laplace Solution Y(s)", Y_sol[0])
+                    else:
+                        display_answer(f"ℒ Transformed Equation", full_eq)
+                except:
+                    display_answer(f"ℒ Transformed Equation", full_eq)
+            
+            else:
+                val = smart_parse(eq_part_clean)
+                t_sym = sym_memory['t']
+                s_sym = sym_memory['s']
+                res = sp.laplace_transform(val, t_sym, s_sym, noconds=True)
+                display_answer(f"ℒ Laplace Transform", res)
+
+        # --- PARTIAL FRACTION ---
+        elif cmd == "partfrac:":
+            clean_content = clean_input(raw_content)
+            val = smart_parse(clean_content)
+            res = sp.apart(val)
+            display_answer(f"Partial Fraction Decomposition", res)
+
+        # --- INVERSE LAPLACE ---
+        elif cmd == "ilap:":
+            clean_content = clean_input(raw_content)
+            val = smart_parse(clean_content)
+            t_sym = sym_memory['t']
+            s_sym = sym_memory['s']
+            res = sp.inverse_laplace_transform(val, s_sym, t_sym, noconds=True)
+            res = res.replace(sp.Heaviside, lambda *args: 1)
+            display_answer(f"ℒ⁻¹ Inverse Laplace", res)
+
+        # --- UNIT CONVERSION ---
+        elif cmd == "convert:":
+            match = re.search(r"([ \(\)\d\.\-\+eE]+)\s*([a-zA-Z\d_]+)\s+to\s+([a-zA-Z\d_]+)", raw_content, re.IGNORECASE)
+            if match:
+                try:
+                    val = float(eval(match.group(1), {}, {}))
+                    u_from = match.group(2)
+                    u_to = match.group(3)
+                    res, cat_name = perform_conversion(val, u_from, u_to)
+                    with history_container.container(border=True):
+                        c_icon, c_res = st.columns([0.05, 0.95])
+                        c_icon.markdown("🔄")
+                        if res is not None:
+                            c_res.metric(f"Convert [{cat_name}]", f"{format_number(res)} {u_to}", f"{raw_content}")
+                            st.session_state.ans = res 
+                        else:
+                            c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. Check units in sidebar.")
+                except ValueError:
+                    with history_container: st.error("Error parsing number in conversion.")
+            else:
+                with history_container: st.error("Format: `convert [value] [unit] to [unit]`")
+
+        # --- APPROX ---
+        elif cmd == "approx:":
+            clean_content = clean_input(raw_content)
+            val = eval(clean_content, {}, calc_memory)
+            try:
+                res = sp.nsimplify(val, [sp.pi, sp.E, sp.sqrt(2), sp.sqrt(3), sp.sqrt(5)], tolerance=0.001, rational=True)
+            except: res = val
+            if isinstance(res, float) or (hasattr(res, 'is_Float') and res.is_Float):
+                frac = Fraction(val).limit_denominator(1000)
+                if frac.denominator < 1000: res = sp.Rational(frac.numerator, frac.denominator)
+            display_answer(f"Approximation: {line}", res)
+
+        # --- GRAPHING ---
         elif cmd == "graph:":
-            # GRAPHING LOGIC
+            # Explicitly check if variable is t or x
             graph_var = 't' if ('t' in raw_content and 'x' not in raw_content) else 'x'
             funcs = raw_content.split(",")
-            x_vals = np.linspace(st.session_state.min_x, st.session_state.max_x, 500)
+            x_vals = np.linspace(st.session_state.min_x, st.session_state.max_x, 1000)
+            step = st.session_state.table_step
+            x_table = np.arange(st.session_state.min_x, st.session_state.max_x + (step/100), step)
+            graph_mem = calc_memory.copy()
             fig = go.Figure()
-            for idx, f in enumerate(funcs):
-                clean_f = clean_input(f.strip())
-                color = COLOR_CYCLE[idx % len(COLOR_CYCLE)]
-                if "=" in clean_f: # Implicit
-                    l, r = clean_f.split("=")
-                    expr = smart_parse(l) - smart_parse(r)
-                    # Implicit plotting is heavy, skipping for speed in this demo
-                    st.caption("Implicit graphing simplified for cloud speed.")
-                else:
-                    lam_f = sp.lambdify(sym_memory[graph_var], smart_parse(clean_f), modules=["numpy", calc_memory])
-                    y_plot = lam_f(x_vals)
-                    if isinstance(y_plot, (int, float)): y_plot = np.full_like(x_vals, y_plot)
-                    fig.add_trace(go.Scatter(x=x_vals, y=y_plot, name=clean_f, line=dict(color=color)))
-            fig.update_layout(height=400, margin=dict(l=20,r=20,t=20,b=20))
-            with history_container.container(border=True):
-                st.plotly_chart(fig, use_container_width=True)
-
-        elif cmd == "lap:":
-            val = smart_parse(clean_input(raw_content))
-            res = sp.laplace_transform(val, sym_memory['t'], sym_memory['s'], noconds=True)
-            display_answer("Laplace", res)
-
-        elif cmd == "ilap:":
-            val = smart_parse(clean_input(raw_content))
-            res = sp.inverse_laplace_transform(val, sym_memory['s'], sym_memory['t'], noconds=True)
-            display_answer("Inv Laplace", res)
-
-        elif cmd == "diff:":
-            clean_ode, var = translate_diff_eq(clean_input(raw_content))
-            l, r = clean_ode.split("=")
-            res = sp.dsolve(sp.Eq(eval(l, calc_sym_memory), eval(r, calc_sym_memory)))
-            display_answer("Diff Eq", res)
+            df_table = {graph_var: x_table}
             
-        elif cmd == "integ:":
-            parts = clean_input(raw_content).split(",")
-            expr = smart_parse(parts[0])
-            var = sym_memory['t'] if ('t' in parts[0] and 'x' not in parts[0]) else sym_memory['x']
-            if len(parts) == 3: res = sp.integrate(expr, (var, smart_parse(parts[1]), smart_parse(parts[2])))
-            else: res = sp.integrate(expr, var)
-            display_answer("Integral", res)
-
-        elif cmd == "deriv:":
-            expr = smart_parse(clean_input(raw_content))
-            var = sym_memory['t'] if ('t' in raw_content and 'x' not in raw_content) else sym_memory['x']
-            display_answer("Derivative", sp.diff(expr, var))
-
-    except Exception as e:
-        # Don't show error to keep UI clean, but log it if needed
-        # st.error(e) 
-        pass
-
-# Scroll hack
-st.markdown('<script>window.scrollTo(0,document.body.scrollHeight);</script>', unsafe_allow_html=True)
+            with history_container.container(border=True):
+                st.subheader(f"📊 Graph: `{line}`")
+                y_arrays_plot = []
+                for idx, func_str in enumerate(funcs):
+                    clean_f = clean_input(func_str.strip())
+                    line_color = COLOR_CYCLE[idx % len(COLOR_CYCLE)]
+                    if "=" in clean_f and not (clean_f.startswith("y=") or clean_f.endswith("=y")):
+                        l, r = clean_f.split("=")
+                        expr = smart_parse(l) - smart_parse(r)
+                        feature_x = np.linspace(st.session_state.min_x, st.session_state.max_x, 200)
+                        feature_y = np.linspace(st.session_state.min_y, st.session_state.max_y, 200)
+                        X, Y = np.meshgrid(feature_x, feature_y)
+                        f_imp = sp.lambdify((sym_memory['x'], sym_memory['y']), expr, modules=["numpy", calc_memory])
+                        Z = f_imp(X, Y)
+                        fig.add_trace(go.Contour(z=Z, x=feature_x, y=feature_y, contours=dict(start=0, end=0, size=2, coloring='lines'), line=dict(width=
