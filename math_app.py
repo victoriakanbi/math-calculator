@@ -5,9 +5,16 @@ import sympy as sp
 import os
 import string
 import re
+import io
 import plotly.graph_objects as go
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
 from fractions import Fraction
+
+# Try to import python-docx for .docx support, handle gracefully if missing
+try:
+    import docx
+except ImportError:
+    docx = None
 
 # 1. PAGE SETUP
 st.set_page_config(
@@ -183,8 +190,6 @@ with st.sidebar:
         st.divider()
         if st.button("🗑️ Clear History", type="primary", use_container_width=True):
             st.session_state.history_cache = ""
-            # IMPORTANT: We can't clear log_area_widget here if it's already rendered,
-            # but since we rerun immediately, the fresh run will handle it.
             if 'log_area_widget' in st.session_state:
                 del st.session_state.log_area_widget
             st.rerun()
@@ -234,22 +239,55 @@ with st.sidebar:
         | **Isolate** | Rearrange physics formulas | `isolate F=G*m1*m2/r^2, m1` |
         """, unsafe_allow_html=True)
 
-    # --- RESTORED LOG TAB (FIXED) ---
+    # --- RESTORED LOG TAB (WITH UPLOAD) ---
     with tab_log:
         st.markdown("### 📜 Session History")
-        st.info("This history is private to your current session. You can edit it here.")
         
+        # --- NEW: FILE UPLOADER ---
+        uploaded_log = st.file_uploader("📂 Upload Log", type=["txt", "docx", "doc"], label_visibility="collapsed")
+        
+        # Explanatory Note
+        st.info("ℹ️ **Load Session:** Upload a `.txt` or `.docx` file to restore your previous calculations into the log below.")
+
+        if uploaded_log and st.button("📥 Load File into Log", use_container_width=True):
+            content = ""
+            try:
+                # Handle .docx
+                if uploaded_log.name.endswith(".docx"):
+                    if docx:
+                        doc = docx.Document(uploaded_log)
+                        content = "\n".join([para.text for para in doc.paragraphs])
+                    else:
+                        st.error("Missing `python-docx` library. Cannot read .docx files.")
+                # Handle .txt or text-based .doc
+                else:
+                    # Try utf-8, fallback to latin-1
+                    try:
+                        content = uploaded_log.getvalue().decode("utf-8")
+                    except:
+                        content = uploaded_log.getvalue().decode("latin-1")
+                
+                if content:
+                    st.session_state.history_cache = content
+                    # Force sync next render
+                    st.session_state.log_area_widget = content
+                    st.success("Log loaded successfully!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
+        
+        st.divider()
+
         # Helper to sync text area with cache AND handle specific commands like 'clear'
         def update_cache_from_area():
             new_val = st.session_state.log_area_widget
             if new_val.strip().lower().endswith("clear"):
                 st.session_state.history_cache = ""
-                st.session_state.log_area_widget = "" # This is safe because it runs in callback
+                st.session_state.log_area_widget = "" 
             else:
                 st.session_state.history_cache = new_val
 
-        # --- KEY FIX: SYNC WIDGET WITH CACHE BEFORE RENDER ---
-        # This makes sure that if the cache changed (from bottom input), the widget reflects it.
+        # SYNC WIDGET WITH CACHE BEFORE RENDER
         if 'history_cache' in st.session_state:
              st.session_state.log_area_widget = st.session_state.history_cache
 
@@ -257,7 +295,7 @@ with st.sidebar:
         st.text_area(
             "Raw Input Log", 
             value=st.session_state.history_cache, 
-            height=400, 
+            height=300, 
             key="log_area_widget",
             on_change=update_cache_from_area,
             help="Edit this to modify past commands. Type 'clear' to wipe."
@@ -772,8 +810,7 @@ new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to k
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
         st.session_state.history_cache = ""
-        # We don't touch log_area_widget here to avoid error.
-        # It will update on the next run because of the sync logic at the top.
+        # Don't touch log_area_widget here, it syncs at start of next run
     else:
         if st.session_state.history_cache:
             st.session_state.history_cache += "\n" + new_cmd
