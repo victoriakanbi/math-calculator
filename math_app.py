@@ -592,4 +592,152 @@ for i, line in enumerate(lines):
                         X, Y = np.meshgrid(feature_x, feature_y)
                         f_imp = sp.lambdify((sym_memory['x'], sym_memory['y']), expr, modules=["numpy", calc_memory])
                         Z = f_imp(X, Y)
-                        fig.add_trace(go.Contour(z=Z, x=feature_x, y=feature_y, contours=dict(start=0, end=0, size=2, coloring='lines'), line=dict(width=
+                        fig.add_trace(go.Contour(z=Z, x=feature_x, y=feature_y, contours=dict(start=0, end=0, size=2, coloring='lines'), line=dict(width=2, color=line_color), showscale=False, name=clean_f))
+                    else:
+                        if "=" in clean_f: clean_f = clean_f.split("=")[1]
+                        try:
+                            sym_expr = smart_parse(clean_f)
+                            lam_f = sp.lambdify(sym_memory[graph_var], sym_expr, modules=["numpy", calc_memory])
+                            y_plot = lam_f(x_vals)
+                            if isinstance(y_plot, (int, float)): y_plot = np.full_like(x_vals, float(y_plot))
+                            elif y_plot.ndim == 0: y_plot = np.full_like(x_vals, float(y_plot))
+                            y_tab = lam_f(x_table)
+                            if isinstance(y_tab, (int, float)): y_tab = np.full_like(x_table, float(y_tab))
+                            elif y_tab.ndim == 0: y_tab = np.full_like(x_table, float(y_tab))
+                            fig.add_trace(go.Scatter(x=x_vals, y=y_plot, mode='lines', name=clean_f, line=dict(color=line_color)))
+                            df_table[clean_f] = y_tab
+                            y_arrays_plot.append(y_plot)
+                        except: pass
+                intersect_x, intersect_y = [], []
+                if show_intersect:
+                    for j in range(len(y_arrays_plot)):
+                        for k in range(j + 1, len(y_arrays_plot)):
+                            y1, y2 = y_arrays_plot[j], y_arrays_plot[k]
+                            diff = y1 - y2
+                            sign_changes = np.where(np.diff(np.signbit(diff)))[0]
+                            for idx in sign_changes:
+                                x0, x1 = x_vals[idx], x_vals[idx+1]
+                                d0, d1 = diff[idx], diff[idx+1]
+                                if (d1 - d0) != 0:
+                                    rx = x0 - d0 * (x1 - x0) / (d1 - d0)
+                                    ry = np.interp(rx, x_vals, y1)
+                                    intersect_x.append(rx); intersect_y.append(ry)
+                    if intersect_x:
+                        fig.add_trace(go.Scatter(x=intersect_x, y=intersect_y, mode='markers', marker=dict(color='red', size=10, line=dict(width=2, color='black')), name='Intersections'))
+                fig.update_layout(margin=dict(l=20, r=20, t=30, b=20), hovermode="x unified", xaxis_title=graph_var, yaxis_title="y", yaxis_range=[st.session_state.min_y, st.session_state.max_y], height=500)
+                st.plotly_chart(fig, use_container_width=True, key=f"plot_{i}")
+                with st.expander(f"📉 Data Points & Intersections ({len(intersect_x)} found)", expanded=False):
+                    if intersect_x:
+                         st.markdown("**Intersection Points:**")
+                         st.dataframe(pd.DataFrame({'X': intersect_x, 'Y': intersect_y}), height=150)
+                    st.dataframe(pd.DataFrame(df_table))
+
+        # --- DIFF EQ ---
+        elif cmd == "diff:":
+            if "," in raw_content:
+                parts = raw_content.split(",")
+                raw_ode = parts[0]; raw_ics = parts[1:]
+                clean_ode = clean_input(raw_ode)
+                clean_ode, active_var = translate_diff_eq(clean_ode)
+                l, r = clean_ode.split("=")
+                eq = sp.Eq(eval(l, calc_sym_memory), eval(r, calc_sym_memory))
+                f_symbol = calc_sym_memory['f'](sym_memory[active_var])
+                try:
+                    ics = parse_ivp(raw_ics, active_var)
+                    if not ics: raise Exception("No ICs")
+                    res = sp.dsolve(eq, f_symbol, ics=ics)
+                    display_answer(f"IVP Solution: {line}", res)
+                except:
+                    res = sp.dsolve(eq, f_symbol)
+                    display_answer(f"General Solution: {line}", res, warning="Ignored ICs")
+            else:
+                clean_content, active_var = translate_diff_eq(clean_input(raw_content))
+                l, r = clean_content.split("=")
+                indep_sym = sym_memory[active_var]
+                res = sp.dsolve(sp.Eq(eval(l, calc_sym_memory), eval(r, calc_sym_memory)), calc_sym_memory['f'](indep_sym))
+                display_answer(f"General Solution: {line}", res)
+
+        # --- SOLVE ---
+        elif cmd == "solve:":
+            clean_content = clean_input(raw_content)
+            if "," in clean_content:
+                eq_list = clean_content.split(",")
+                equations = []
+                all_symbols = set()
+                for p in eq_list:
+                    if "=" in p:
+                        l, r = p.split("=")
+                        lhs, rhs = smart_parse(l), smart_parse(r)
+                        eq = sp.Eq(lhs, rhs)
+                        equations.append(eq)
+                        all_symbols.update(lhs.free_symbols); all_symbols.update(rhs.free_symbols)
+                res = sp.solve(equations, list(all_symbols), dict=True)
+                display_answer(f"System Solution: {line}", res)
+            elif "=" in clean_content:
+                l, r = clean_content.split("=")
+                res = sp.solve(sp.Eq(smart_parse(l), smart_parse(r)))
+                display_answer(f"Roots: {line}", res)
+
+        # --- CALC ---
+        elif cmd == "calc:":
+            clean_content = clean_input(raw_content)
+            sym_val = smart_parse(clean_content)
+            if hasattr(sym_val, 'subs'):
+                 sym_val = sym_val.subs(constant_subs)
+            display_answer(f"Calculation: {line}", sym_val)
+
+        # --- ISOLATE ---
+        elif cmd == "isolate:":
+            clean_content = clean_input(raw_content)
+            parts = clean_content.split(",")
+            eq_part = parts[0]; target_var = parts[1].strip()
+            l, r = eq_part.split("=")
+            res = sp.solve(sp.Eq(smart_parse(l), smart_parse(r)), smart_parse(target_var))
+            with history_container.container(border=True):
+                st.markdown(f"**Rearrange: `{line}`**")
+                for r in res: st.latex(f"{target_var} = " + sp.latex(r))
+
+        # --- INTEG ---
+        elif cmd == "integ:":
+            clean_content = clean_input(raw_content)
+            parts = clean_content.split(",")
+            expr_str = parts[0].strip()
+            int_var = sym_memory['t'] if ('t' in expr_str and 'x' not in expr_str) else sym_memory['x']
+            sym_expr = smart_parse(expr_str)
+            if len(parts) == 3: 
+                lower = smart_parse(parts[1]); upper = smart_parse(parts[2])
+                res = sp.integrate(sym_expr, (int_var, lower, upper))
+                display_answer(f"Definite Integral: {line}", res)
+            else: 
+                res = sp.integrate(sym_expr, int_var)
+                with history_container.container(border=True):
+                    st.markdown(f"**Indefinite Integral: `{line}`**")
+                    st.latex(sp.latex(res).replace("\\log", "\\ln").replace("\\theta", "\\text{step}") + " + C")
+
+        # --- DERIV ---
+        elif cmd == "deriv:":
+            clean_content = clean_input(raw_content)
+            if "=" in clean_content:
+                l, r = clean_content.split("=")
+                eq = sp.Eq(smart_parse(l), smart_parse(r))
+                res = sp.idiff(eq.lhs - eq.rhs, sym_memory['y'], sym_memory['x'])
+                display_answer(f"Implicit Derivative (dy/dx)", res)
+            else:
+                parts = clean_content.split(",")
+                expr_str = parts[0].strip()
+                deriv_var = sym_memory['t'] if ('t' in expr_str and 'x' not in expr_str) else sym_memory['x']
+                sym_expr = smart_parse(expr_str)
+                sym_deriv = sp.diff(sym_expr, deriv_var)
+                if len(parts) == 2: 
+                    point = smart_parse(parts[1])
+                    final_val = sym_deriv.subs(deriv_var, point)
+                    display_answer(f"Slope at {deriv_var}={point}", final_val)
+                else:
+                    display_answer(f"Derivative Formula: {line}", sym_deriv)
+
+    except Exception as e:
+        with history_container:
+            st.error(f"⚠️ Error processing '{line}': {e}")
+
+# Force auto-scroll to bottom
+st.markdown('<script>window.scrollTo(0,document.body.scrollHeight);</script>', unsafe_allow_html=True)
