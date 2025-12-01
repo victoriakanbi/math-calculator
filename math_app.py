@@ -145,7 +145,6 @@ def perform_conversion(val, u_from, u_to):
 with st.sidebar:
     st.header("🧮 Victor's Calculator")
     
-    # RESTORED: The "Log" tab is back where you expect it
     tab_settings, tab_const, tab_help, tab_log = st.tabs(["⚙️ Set", "⚛️ Const", "📝 Help", "📜 Log"])
     
     with tab_settings:
@@ -231,22 +230,28 @@ with st.sidebar:
         | **Isolate** | Rearrange physics formulas | `isolate F=G*m1*m2/r^2, m1` |
         """, unsafe_allow_html=True)
 
-    # --- RESTORED LOG TAB ---
+    # --- RESTORED LOG TAB (WITH INPUT) ---
     with tab_log:
         st.markdown("### 📜 Session History")
-        st.info("This history is private to your current session.")
+        st.info("This history is private to your current session. You can edit it here.")
         
-        # Helper to sync text area with cache
+        # Helper to sync text area with cache AND handle specific commands like 'clear'
         def update_cache_from_area():
-            st.session_state.history_cache = st.session_state.log_area_widget
+            new_val = st.session_state.log_area_widget
+            # Check for 'clear' command inside the text area edit
+            if new_val.strip().lower().endswith("clear"):
+                st.session_state.history_cache = ""
+            else:
+                st.session_state.history_cache = new_val
 
-        # 1. The editable log (just like before)
+        # 1. The editable log - NOW THE PRIMARY INPUT FOR HISTORY
         st.text_area(
             "Raw Input Log", 
             value=st.session_state.history_cache, 
-            height=300, 
+            height=400, 
             key="log_area_widget",
-            on_change=update_cache_from_area
+            on_change=update_cache_from_area,
+            help="Edit this to modify past commands. Type 'clear' to wipe."
         )
         
         if st.button("🔄 Rerun Log", use_container_width=True):
@@ -254,7 +259,7 @@ with st.sidebar:
             
         st.divider()
         
-        # 2. DOWNLOAD BUTTON (New Feature)
+        # 2. DOWNLOAD BUTTON
         st.download_button(
             label="💾 Download Log as .txt",
             data=st.session_state.history_cache,
@@ -415,21 +420,9 @@ def display_answer(label, exact_val, warning=None):
 # --- MAIN LAYOUT ---
 history_container = st.container()
 
-# --- INPUT SYSTEM (RAM ONLY) ---
-# We now load from st.session_state.history_cache INSTEAD of a file
-user_input = st.text_area("Raw Input Log", height=300, value=st.session_state.history_cache, help="Edit this to modify past commands")
-
-# Update cache if user types something
-if user_input != st.session_state.history_cache:
-    st.session_state.history_cache = user_input
-    # NEW: INTERCEPT 'CLEAR' COMMAND
-    if user_input.strip().lower().endswith("clear"):
-        st.session_state.history_cache = ""
-        st.rerun()
-    st.rerun()
-
-if st.button("🔄 Rerun Log", use_container_width=True):
-    st.rerun()
+# --- INPUT SYSTEM (CLEANED) ---
+# Previous text_area was removed from here. 
+# The sidebar log now acts as the master record.
 
 # --- WELCOME SCREEN ---
 if not st.session_state.history_cache:
@@ -769,7 +762,7 @@ for i, line in enumerate(lines):
         with history_container:
             st.error(f"⚠️ Error processing '{line}': {e}")
 
-# --- INPUT BAR (RESTORED) ---
+# --- INPUT BAR ---
 new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to kPa')")
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
