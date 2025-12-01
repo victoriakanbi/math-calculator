@@ -183,6 +183,8 @@ with st.sidebar:
         st.divider()
         if st.button("🗑️ Clear History", type="primary", use_container_width=True):
             st.session_state.history_cache = ""
+            if 'log_area_widget' in st.session_state:
+                st.session_state.log_area_widget = ""
             st.rerun()
 
     with tab_const:
@@ -238,13 +240,13 @@ with st.sidebar:
         # Helper to sync text area with cache AND handle specific commands like 'clear'
         def update_cache_from_area():
             new_val = st.session_state.log_area_widget
-            # Check for 'clear' command inside the text area edit
             if new_val.strip().lower().endswith("clear"):
                 st.session_state.history_cache = ""
+                st.session_state.log_area_widget = ""
             else:
                 st.session_state.history_cache = new_val
 
-        # 1. The editable log - NOW THE PRIMARY INPUT FOR HISTORY
+        # 1. The editable log
         st.text_area(
             "Raw Input Log", 
             value=st.session_state.history_cache, 
@@ -419,10 +421,6 @@ def display_answer(label, exact_val, warning=None):
 
 # --- MAIN LAYOUT ---
 history_container = st.container()
-
-# --- INPUT SYSTEM (CLEANED) ---
-# Previous text_area was removed from here. 
-# The sidebar log now acts as the master record.
 
 # --- WELCOME SCREEN ---
 if not st.session_state.history_cache:
@@ -767,11 +765,16 @@ new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to k
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
         st.session_state.history_cache = ""
+        st.session_state.log_area_widget = ""
     else:
         if st.session_state.history_cache:
             st.session_state.history_cache += "\n" + new_cmd
         else:
             st.session_state.history_cache = new_cmd
+        # FORCE SYNC WIDGET
+        if 'log_area_widget' in st.session_state:
+            st.session_state.log_area_widget = st.session_state.history_cache
+            
     st.rerun()
 
 # Scroll to bottom
