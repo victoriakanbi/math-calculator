@@ -187,6 +187,15 @@ with st.sidebar:
         if st.button("🗑️ Clear History", type="primary", use_container_width=True):
             st.session_state.history_cache = "" # CLEAR RAM ONLY
             st.rerun()
+        
+        # NEW: DOWNLOAD BUTTON
+        st.download_button(
+            label="💾 Download Log",
+            data=st.session_state.history_cache,
+            file_name="calculator_history.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
 
     with tab_const:
         st.markdown("### 🛠️ Supported Units")
@@ -249,8 +258,19 @@ if user_input != st.session_state.history_cache:
         st.rerun()
     st.rerun()
 
-if st.button("🔄 Rerun Log", use_container_width=True):
-    st.rerun()
+# --- HISTORY TAB (Merged logic) ---
+with tab_log:
+    st.markdown("### 📜 Session Log")
+    st.info("Edit the log below to rerun past calculations. Changes here update the main input.")
+    
+    # We use a key to ensure this text area syncs with the main one if needed, 
+    # but for simplicity, we can just display the same RAM cache.
+    # To avoid duplicate widget keys, we can just show the download button here too.
+    
+    st.text_area("Session History", value=st.session_state.history_cache, height=300, disabled=True, key="log_view")
+    
+    if st.button("🔄 Rerun Log", use_container_width=True, key="rerun_log_btn"):
+        st.rerun()
 
 # --- WELCOME SCREEN ---
 if not st.session_state.history_cache:
