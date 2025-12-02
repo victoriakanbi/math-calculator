@@ -10,11 +10,20 @@ import plotly.graph_objects as go
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
 from fractions import Fraction
 
-# Try to import python-docx for .docx support, handle gracefully if missing
+# --- OPTIONAL IMPORTS FOR ROBUST FEATURES ---
+# 1. DOCX Support
 try:
     import docx
 except ImportError:
     docx = None
+
+# 2. PINT Support (For "Convert Literally Anything")
+try:
+    from pint import UnitRegistry
+    ureg = UnitRegistry()
+    # Optional: Enable contexts if needed, but base is usually enough
+except ImportError:
+    ureg = None
 
 # 1. PAGE SETUP
 st.set_page_config(
@@ -37,7 +46,6 @@ st.markdown("""
 # --- 2. STATE MANAGEMENT (RAM ONLY) ---
 if 'ans' not in st.session_state: st.session_state.ans = 0
 if 'sig_figs' not in st.session_state: st.session_state.sig_figs = 5
-# This is your private RAM history. It wipes on refresh.
 if 'history_cache' not in st.session_state: st.session_state.history_cache = ""
 
 # --- 3. CONSTANTS LIBRARY ---
@@ -82,51 +90,46 @@ CONSTANTS = {
     }
 }
 
-# --- 4. UNIT CONVERSION LOGIC ---
+# --- 4. UNIT CONVERSION LOGIC (HYBRID) ---
+# Hardcoded fallback for common units if Pint is missing
 UNIT_CATEGORIES = {
-    "Length": {
-        "m": 1.0, "cm": 0.01, "mm": 0.001, "km": 1000.0, "um": 1e-6,
-        "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344
-    },
-    "Mass": {
-        "kg": 1.0, "g": 0.001, "mg": 1e-6, "tonne": 1000.0,
-        "lbm": 0.45359237, "slug": 14.5939, "oz": 0.0283495
-    },
-    "Force": {
-        "n": 1.0, "kn": 1000.0, "mn": 1e6,
-        "lbf": 4.448222, "kip": 4448.22, "dyn": 1e-5
-    },
-    "Pressure": {
-        "pa": 1.0, "kpa": 1000.0, "mpa": 1e6, "gpa": 1e9,
-        "bar": 1e5, "atm": 101325.0, "psi": 6894.757, 
-        "torr": 133.322, "mmhg": 133.322
-    },
-    "Energy": {
-        "j": 1.0, "kj": 1000.0, "mj": 1e6,
-        "cal": 4.184, "kcal": 4184.0, "btu": 1055.056, 
-        "kwh": 3.6e6, "ev": 1.60218e-19
-    },
-    "Power": {
-        "w": 1.0, "kw": 1000.0, "mw": 1e6,
-        "hp": 745.7, "hp_met": 735.5
-    },
-    "Volume": {
-        "m3": 1.0, "cm3": 1e-6, "mm3": 1e-9,
-        "l": 0.001, "ml": 1e-6, 
-        "gal": 0.00378541, "ft3": 0.0283168, "in3": 1.6387e-5
-    },
-    "Area": {
-        "m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "km2": 1e6, "ha": 10000.0,
-        "ft2": 0.092903, "in2": 0.00064516, "acre": 4046.86
-    },
-    "Speed": {
-        "mps": 1.0, "kph": 0.277778, "mph": 0.44704, "kn": 0.514444
-    }
+    "Length": {"m": 1.0, "cm": 0.01, "mm": 0.001, "km": 1000.0, "um": 1e-6, "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344},
+    "Mass": {"kg": 1.0, "g": 0.001, "mg": 1e-6, "tonne": 1000.0, "lbm": 0.45359237, "slug": 14.5939, "oz": 0.0283495},
+    "Force": {"n": 1.0, "kn": 1000.0, "mn": 1e6, "lbf": 4.448222, "kip": 4448.22, "dyn": 1e-5},
+    "Pressure": {"pa": 1.0, "kpa": 1000.0, "mpa": 1e6, "gpa": 1e9, "bar": 1e5, "atm": 101325.0, "psi": 6894.757, "torr": 133.322, "mmhg": 133.322},
+    "Energy": {"j": 1.0, "kj": 1000.0, "mj": 1e6, "cal": 4.184, "kcal": 4184.0, "btu": 1055.056, "kwh": 3.6e6, "ev": 1.60218e-19},
+    "Power": {"w": 1.0, "kw": 1000.0, "mw": 1e6, "hp": 745.7, "hp_met": 735.5},
+    "Volume": {"m3": 1.0, "cm3": 1e-6, "mm3": 1e-9, "l": 0.001, "ml": 1e-6, "gal": 0.00378541, "ft3": 0.0283168, "in3": 1.6387e-5},
+    "Area": {"m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "km2": 1e6, "ha": 10000.0, "ft2": 0.092903, "in2": 0.00064516, "acre": 4046.86},
+    "Speed": {"mps": 1.0, "m/s": 1.0, "kph": 0.277778, "km/h": 0.277778, "mph": 0.44704, "kn": 0.514444},
 }
 
-def perform_conversion(val, u_from, u_to):
-    u_from = u_from.lower().replace(" ", "")
-    u_to = u_to.lower().replace(" ", "")
+def perform_conversion(val, u_from_str, u_to_str):
+    # 1. ROBUST METHOD: Use PINT if installed (Handles compound units like kg*m/s^2)
+    if ureg:
+        try:
+            # Clean up inputs for Pint (Pint prefers '**' but handles '^' usually)
+            # We treat 'C', 'F' specially in Pint usually, but standard parser handles degC/degF
+            qty_str = f"{val} * {u_from_str}"
+            src_qty = ureg.parse_expression(qty_str)
+            target_qty = src_qty.to(u_to_str)
+            
+            # Formatting
+            dims = str(target_qty.dimensionality)
+            if dims == '[temperature]': cat = "Temperature"
+            elif dims == '[length]': cat = "Length"
+            elif dims == '[mass]': cat = "Mass"
+            elif dims == '[time]': cat = "Time"
+            else: cat = dims # e.g., "[length] / [time] ** 2"
+            
+            return target_qty.magnitude, cat
+        except Exception:
+            # Fall through to manual method if Pint fails or doesn't recognize unit
+            pass
+
+    # 2. FALLBACK METHOD: Hardcoded Dictionary
+    u_from = u_from_str.lower().replace(" ", "")
+    u_to = u_to_str.lower().replace(" ", "")
     
     temps = ['c', 'f', 'k', 'r']
     if u_from in temps and u_to in temps:
@@ -196,8 +199,14 @@ with st.sidebar:
 
     with tab_const:
         st.markdown("### 🛠️ Supported Units")
-        st.caption("Auto-detects category (e.g., Mass, Pressure)")
-        with st.expander("View Unit Keys", expanded=False):
+        if ureg:
+            st.success("✅ Robust Mode Active (Pint)")
+            st.caption("You can convert almost any physics unit (e.g., `kg*m/s^2` to `N`, `furlong/fortnight` to `m/s`).")
+        else:
+            st.warning("⚠️ Basic Mode (Install `pint` for robust units)")
+            st.caption("Only basic units supported. Run `pip install Pint` to unlock everything.")
+            
+        with st.expander("View Unit Keys (Basic Mode)", expanded=False):
             st.markdown("""
             **Pres:** `Pa, kPa, MPa, psi, atm, bar, mmHg`  
             **Vol:** `m3, ft3, in3, L, mL, gal`  
@@ -224,7 +233,7 @@ with st.sidebar:
         | Command | Description & Syntax | Example |
         | :--- | :--- | :--- |
         | **Clear** | Wipes history immediately | `clear` |
-        | **Convert** | Convert units (Implicit supported) | `14.7 psi to kPa` |
+        | **Convert** | Convert units (Implicit supported) | `1 m/s^2 to km/h^2` |
         | **Temp** | Temperature conversion | `100 F to C` |
         | **Laplace** | Laplace ($t \\to s$) or ODE | `lap t^2` or `lap y''+y=0, y(0)=1` |
         | **Inv Lap** | Inverse Laplace ($s \\to t$) | `ilap 1/s^2` |
@@ -247,7 +256,7 @@ with st.sidebar:
         uploaded_log = st.file_uploader("📂 Upload Log", type=["txt", "docx", "doc"], label_visibility="collapsed")
         
         # Explanatory Note
-        st.info("ℹ️ Restore Session: Upload a .txt or .docx file to recover your history, or simply paste your calculations directly into the log below.")
+        st.info("ℹ️ **Load History:** Upload a file or paste your commands below to restore your session.")
 
         if uploaded_log and st.button("📥 Load File into Log", use_container_width=True):
             content = ""
@@ -474,7 +483,7 @@ if not st.session_state.history_cache:
         <div style="text-align: center; color: gray; margin-top: 50px;">
             <h3>👋 Welcome to Victor's Calculator</h3>
             <p>Start by typing a command below or open the sidebar for help.</p>
-            <p><small>⚠️ Note: This session is temporary and private. Please save your work using the Download Log button in the sidebar.</small></p>
+            <p style="font-size: 0.9em; color: #666;">⚠️ <strong>Note:</strong> This session is temporary and private. Please save your work using the <strong>Download Log</strong> button in the sidebar.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -511,9 +520,10 @@ for i, line in enumerate(lines):
         if first_word in KNOWN:
             cmd = first_word + ":"
             raw_content = line[len(first_word):].strip()
-        elif re.match(r"^[\(\)\d\.\-\+eE]+\s*[a-zA-Z\d_]+\s+to\s+[a-zA-Z\d_]+", line, re.IGNORECASE):
-            cmd = "convert:"
-            raw_content = line
+        # --- ROBUST CONVERSION PARSING (UNIT1 TO UNIT2) ---
+        elif re.match(r"^[\(\)\d\.\-\+eE]+.*to.*", line, re.IGNORECASE):
+             cmd = "convert:"
+             raw_content = line
         elif "y'" in line or re.search(r"y\s*\(", line): cmd = "diff:"
         elif "=" in line: cmd = "solve:"
 
@@ -598,15 +608,20 @@ for i, line in enumerate(lines):
             res = res.replace(sp.Heaviside, lambda *args: 1)
             display_answer(f"ℒ⁻¹ Inverse Laplace", res)
 
-        # --- UNIT CONVERSION ---
+        # --- UNIT CONVERSION (ROBUST) ---
         elif cmd == "convert:":
-            match = re.search(r"([ \(\)\d\.\-\+eE]+)\s*([a-zA-Z\d_]+)\s+to\s+([a-zA-Z\d_]+)", raw_content, re.IGNORECASE)
+            # regex for: (number) (unit1) to (unit2)
+            match = re.search(r"([ \(\)\d\.\-\+eE\*]+)\s*(.+)\s+to\s+(.+)", raw_content, re.IGNORECASE)
             if match:
                 try:
-                    val = float(eval(match.group(1), {}, {}))
-                    u_from = match.group(2)
-                    u_to = match.group(3)
+                    val_str = match.group(1).strip()
+                    if val_str.endswith('*'): val_str = val_str[:-1] # cleanup
+                    val = float(eval(val_str, {}, {}))
+                    u_from = match.group(2).strip()
+                    u_to = match.group(3).strip()
+                    
                     res, cat_name = perform_conversion(val, u_from, u_to)
+                    
                     with history_container.container(border=True):
                         c_icon, c_res = st.columns([0.05, 0.95])
                         c_icon.markdown("🔄")
@@ -614,7 +629,7 @@ for i, line in enumerate(lines):
                             c_res.metric(f"Convert [{cat_name}]", f"{format_number(res)} {u_to}", f"{raw_content}")
                             st.session_state.ans = res 
                         else:
-                            c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. Check units in sidebar.")
+                            c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. If you haven't installed `Pint`, try `pip install Pint`.")
                 except ValueError:
                     with history_container: st.error("Error parsing number in conversion.")
             else:
@@ -821,5 +836,3 @@ if new_cmd:
 
 # Scroll to bottom
 st.markdown('<script>window.scrollTo(0,document.body.scrollHeight);</script>', unsafe_allow_html=True)
-
-
