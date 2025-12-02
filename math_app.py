@@ -200,7 +200,7 @@ with st.sidebar:
     with tab_const:
         st.markdown("### 🛠️ Supported Units")
         if ureg:
-            st.success("✅ Robust Mode Active (Pint)")
+            st.success("✅ Conversions are case sensitive")
             st.caption("You can convert almost any physics unit (e.g., `kg*m/s^2` to `N`, `furlong/fortnight` to `m/s`).")
         else:
             st.warning("⚠️ Basic Mode (Install `pint` for robust units)")
@@ -629,7 +629,7 @@ for i, line in enumerate(lines):
                             c_res.metric(f"Convert [{cat_name}]", f"{format_number(res)} {u_to}", f"{raw_content}")
                             st.session_state.ans = res 
                         else:
-                            c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. If you haven't installed `Pint`, try `pip install Pint`.")
+                            c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. Check the case, it is case sensitive.")
                 except ValueError:
                     with history_container: st.error("Error parsing number in conversion.")
             else:
