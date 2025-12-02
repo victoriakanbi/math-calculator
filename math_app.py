@@ -52,10 +52,6 @@ st.markdown("""
         header {
             display: none !important;
         }
-        /* Hide the Print Button itself */
-        #print-btn-container {
-            display: none !important;
-        }
         /* Hide the Chat Input at the bottom */
         div[data-testid="stChatInput"] {
             display: none !important;
@@ -73,23 +69,6 @@ st.markdown("""
         }
     }
 </style>
-
-<!-- JS PRINT BUTTON INJECTION -->
-<div id="print-btn-container" style="position: fixed; top: 3.5rem; right: 2rem; z-index: 999999;">
-    <button onclick="window.print()" style="
-        background-color: #ff4b4b; 
-        color: white; 
-        border: none; 
-        padding: 8px 16px; 
-        border-radius: 5px; 
-        cursor: pointer; 
-        font-weight: bold;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
-        font-family: sans-serif;
-    ">
-        🖨️ Print Work
-    </button>
-</div>
 """, unsafe_allow_html=True)
 
 # --- 2. STATE MANAGEMENT (RAM ONLY) ---
@@ -871,6 +850,10 @@ for i, line in enumerate(lines):
 
 # --- INPUT BAR ---
 new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to kPa')")
+
+# Footer for print
+st.markdown("<div style='text-align: center; color: #888; font-size: 0.8em; margin-top: 2rem;'>printer friendly page</div>", unsafe_allow_html=True)
+
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
         st.session_state.history_cache = ""
