@@ -76,7 +76,7 @@ st.markdown("""
 
 <!-- JS PRINT BUTTON INJECTION -->
 <div id="print-btn-container" style="position: fixed; top: 3.5rem; right: 2rem; z-index: 999999;">
-    <a href="javascript:window.print()" style="
+    <button onclick="window.print()" style="
         background-color: #ff4b4b; 
         color: white; 
         border: none; 
@@ -85,12 +85,10 @@ st.markdown("""
         cursor: pointer; 
         font-weight: bold;
         box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
-        text-decoration: none;
-        display: inline-block;
         font-family: sans-serif;
     ">
         🖨️ Print Work
-    </a>
+    </button>
 </div>
 """, unsafe_allow_html=True)
 
