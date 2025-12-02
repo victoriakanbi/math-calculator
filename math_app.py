@@ -17,13 +17,23 @@ try:
 except ImportError:
     docx = None
 
-# 2. PINT Support (For "Convert Literally Anything")
+# 2. PINT Support (For "Convert Literally Anything" & Gravity Context)
 try:
-    from pint import UnitRegistry
+    from pint import UnitRegistry, Context
     ureg = UnitRegistry()
-    # Optional: Enable contexts if needed, but base is usually enough
+    
+    # DEFINING THE "SMART" ALGORITHM (Gravity Context)
+    # This enables lbf -> lbm conversion by assuming standard gravity
+    g_ctx = Context('gravity')
+    g_ctx.add_transformation('[mass]', '[force]', lambda ureg, x: x * ureg.standard_gravity)
+    g_ctx.add_transformation('[force]', '[mass]', lambda ureg, x: x / ureg.standard_gravity)
+    ureg.add_context(g_ctx)
+    ureg.enable_contexts('gravity') # ACTIVATE THE "SMART" MODE
+    
+    HAS_PINT = True
 except ImportError:
     ureg = None
+    HAS_PINT = False
 
 # 1. PAGE SETUP
 st.set_page_config(
@@ -102,32 +112,35 @@ UNIT_CATEGORIES = {
     "Volume": {"m3": 1.0, "cm3": 1e-6, "mm3": 1e-9, "l": 0.001, "ml": 1e-6, "gal": 0.00378541, "ft3": 0.0283168, "in3": 1.6387e-5},
     "Area": {"m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "km2": 1e6, "ha": 10000.0, "ft2": 0.092903, "in2": 0.00064516, "acre": 4046.86},
     "Speed": {"mps": 1.0, "m/s": 1.0, "kph": 0.277778, "km/h": 0.277778, "mph": 0.44704, "kn": 0.514444},
+    "Acceleration": {"m/s2": 1.0, "m/s^2": 1.0, "cm/s2": 0.01, "cm/s^2": 0.01, "ft/s2": 0.3048, "ft/s^2": 0.3048, "g": 9.80665, "km/h2": 1/12960, "km/h^2": 1/12960, "in/s2": 0.0254, "in/s^2": 0.0254},
+    "Density": {"kg/m3": 1.0, "kg/m^3": 1.0, "g/cm3": 1000.0, "g/cm^3": 1000.0, "g/ml": 1000.0, "lbm/ft3": 16.0185, "lbm/ft^3": 16.0185, "kg/l": 1000.0},
+    "Specific Energy": {"j/kg": 1.0, "kj/kg": 1000.0, "mj/kg": 1e6, "btu/lb": 2326.0, "cal/g": 4184.0, "kcal/kg": 4184.0, "btu/lbm": 2326.0}
 }
 
-def perform_conversion(val, u_from_str, u_to_str):
-    # 1. ROBUST METHOD: Use PINT if installed (Handles compound units like kg*m/s^2)
-    if ureg:
+def perform_conversion_smart(val, u_from_str, u_to_str):
+    # ALGORITHM METHOD 1: PINT (The "Robust" Way)
+    if HAS_PINT:
         try:
-            # Clean up inputs for Pint (Pint prefers '**' but handles '^' usually)
-            # We treat 'C', 'F' specially in Pint usually, but standard parser handles degC/degF
-            qty_str = f"{val} * {u_from_str}"
-            src_qty = ureg.parse_expression(qty_str)
-            target_qty = src_qty.to(u_to_str)
+            # Create quantity from input
+            qty = ureg.Quantity(val, u_from_str)
+            # Attempt conversion (Contexts handle the "smart" lbf->lbm logic)
+            converted = qty.to(u_to_str)
             
-            # Formatting
-            dims = str(target_qty.dimensionality)
+            # Simple Category Detection from Dimensions
+            dims = str(converted.dimensionality)
             if dims == '[temperature]': cat = "Temperature"
             elif dims == '[length]': cat = "Length"
             elif dims == '[mass]': cat = "Mass"
             elif dims == '[time]': cat = "Time"
-            else: cat = dims # e.g., "[length] / [time] ** 2"
+            elif dims == '[force]': cat = "Force"
+            elif dims == '[energy]': cat = "Energy"
+            else: cat = dims # Custom or compound
             
-            return target_qty.magnitude, cat
+            return converted.magnitude, cat
         except Exception:
-            # Fall through to manual method if Pint fails or doesn't recognize unit
-            pass
+            pass # Fall back to manual if Pint fails or unknown unit
 
-    # 2. FALLBACK METHOD: Hardcoded Dictionary
+    # ALGORITHM METHOD 2: MANUAL FALLBACK (The "Simple" Way)
     u_from = u_from_str.lower().replace(" ", "")
     u_to = u_to_str.lower().replace(" ", "")
     
@@ -199,9 +212,9 @@ with st.sidebar:
 
     with tab_const:
         st.markdown("### 🛠️ Supported Units")
-        if ureg:
+        if HAS_PINT:
             st.success("✅ Robust Mode Active (Pint)")
-            st.caption("You can convert almost any physics unit (e.g., `kg*m/s^2` to `N`, `furlong/fortnight` to `m/s`).")
+            st.caption("You can convert almost any physics unit (e.g., `kg*m/s^2` to `N`, `btu/lb` to `kj/kg`).")
         else:
             st.warning("⚠️ Basic Mode (Install `pint` for robust units)")
             st.caption("Only basic units supported. Run `pip install Pint` to unlock everything.")
@@ -216,6 +229,9 @@ with st.sidebar:
             **Energy:** `J, kJ, Btu, cal, kWh, eV`  
             **Power:** `W, kW, hp`  
             **Temp:** `C, F, K, R`
+            **Accel:** `m/s^2, ft/s^2, g, km/h^2`
+            **Dens:** `kg/m^3, g/cm^3, lbm/ft^3`
+            **Spec. Energy:** `btu/lb, kj/kg, cal/g`
             """)
         st.divider()
         st.caption("Constants Library")
@@ -521,7 +537,7 @@ for i, line in enumerate(lines):
             cmd = first_word + ":"
             raw_content = line[len(first_word):].strip()
         # --- ROBUST CONVERSION PARSING (UNIT1 TO UNIT2) ---
-        elif re.match(r"^[\(\)\d\.\-\+eE]+.*to.*", line, re.IGNORECASE):
+        elif re.match(r"^[\(\)\d\.\-\+eE\*]+.*to.*", line, re.IGNORECASE):
              cmd = "convert:"
              raw_content = line
         elif "y'" in line or re.search(r"y\s*\(", line): cmd = "diff:"
@@ -620,7 +636,7 @@ for i, line in enumerate(lines):
                     u_from = match.group(2).strip()
                     u_to = match.group(3).strip()
                     
-                    res, cat_name = perform_conversion(val, u_from, u_to)
+                    res, cat_name = perform_conversion_smart(val, u_from, u_to)
                     
                     with history_container.container(border=True):
                         c_icon, c_res = st.columns([0.05, 0.95])
