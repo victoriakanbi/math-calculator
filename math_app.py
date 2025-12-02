@@ -32,15 +32,63 @@ st.set_page_config(
     page_icon="🧮"
 )
 
-# --- CUSTOM CSS FOR UI POLISH ---
+# --- CUSTOM CSS FOR UI POLISH & PRINTING ---
 st.markdown("""
 <style>
+    /* UI Polish */
     .block-container {padding-top: 2rem; padding-bottom: 5rem;}
     h1 {font-size: 2.2rem !important;}
     div[data-testid="stMetricValue"] {font-size: 1.1rem !important;}
     .stAlert {padding: 0.5rem;}
     .stButton button {padding: 0px 10px;} /* Compact buttons for Sig Figs */
+
+    /* PRINT STYLING */
+    @media print {
+        /* Hide the Sidebar */
+        section[data-testid="stSidebar"] {
+            display: none !important;
+        }
+        /* Hide the Header (Hamburger menu, etc.) */
+        header {
+            display: none !important;
+        }
+        /* Hide the Print Button itself */
+        #print-btn-container {
+            display: none !important;
+        }
+        /* Hide the Chat Input at the bottom */
+        div[data-testid="stChatInput"] {
+            display: none !important;
+        }
+        /* Hide the deploy button if visible */
+        .stAppDeployButton {
+            display: none !important;
+        }
+        
+        /* Expand Main Content Area */
+        .main .block-container {
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+    }
 </style>
+
+<!-- JS PRINT BUTTON INJECTION -->
+<div id="print-btn-container" style="position: fixed; top: 3.5rem; right: 2rem; z-index: 999999;">
+    <button onclick="window.print()" style="
+        background-color: #ff4b4b; 
+        color: white; 
+        border: none; 
+        padding: 8px 16px; 
+        border-radius: 5px; 
+        cursor: pointer; 
+        font-weight: bold;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.2);
+    ">
+        🖨️ Print Workbench
+    </button>
+</div>
 """, unsafe_allow_html=True)
 
 # --- 2. STATE MANAGEMENT (RAM ONLY) ---
