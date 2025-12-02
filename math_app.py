@@ -17,13 +17,25 @@ try:
 except ImportError:
     docx = None
 
-# 2. PINT Support (For "Convert Literally Anything" & Gravity Context)
+# 2. PINT Support (For "Convert Literally Anything")
 try:
     from pint import UnitRegistry, Context
+    # Initialize Pint
     ureg = UnitRegistry()
     
-    # DEFINING THE "SMART" ALGORITHM (Gravity Context)
-    # This enables lbf -> lbm conversion by assuming standard gravity
+    # --- A. DEFINE ALIASES (Smart Definitions) ---
+    # We define lowercase versions of common "lazy" units so they work instantly.
+    # We do NOT redefine standard metric prefixes (m, k, M, G) to protect physics case-sensitivity.
+    ureg.define("ev = electron_volt = eV")
+    ureg.define("lbm = pound = lb")
+    ureg.define("lbf = pound_force")
+    ureg.define("btu = British_thermal_unit = Btu")
+    ureg.define("psi = pound_force_per_square_inch")
+    ureg.define("cal = calorie")
+    ureg.define("ton = 2000 * lb = short_ton") # Engineering assumption for 'ton'
+    
+    # --- B. DEFINE THE GRAVITY CONTEXT (Force <-> Mass smart bridge) ---
+    # This allows conversion between lbf and lbm by assuming standard gravity (g)
     g_ctx = Context('gravity')
     g_ctx.add_transformation('[mass]', '[force]', lambda ureg, x: x * ureg.standard_gravity)
     g_ctx.add_transformation('[force]', '[mass]', lambda ureg, x: x / ureg.standard_gravity)
@@ -120,27 +132,27 @@ UNIT_CATEGORIES = {
 def perform_conversion_smart(val, u_from_str, u_to_str):
     # ALGORITHM METHOD 1: PINT (The "Robust" Way)
     if HAS_PINT:
+        # STEP 1: Strict Case Check (Essential for Physics)
+        # This preserves "M" (Mega) vs "m" (milli).
         try:
-            # Create quantity from input
             qty = ureg.Quantity(val, u_from_str)
-            # Attempt conversion (Contexts handle the "smart" lbf->lbm logic)
             converted = qty.to(u_to_str)
+            return format_pint_result(converted)
+        except:
+            pass # Failed? Move to Step 2
             
-            # Simple Category Detection from Dimensions
-            dims = str(converted.dimensionality)
-            if dims == '[temperature]': cat = "Temperature"
-            elif dims == '[length]': cat = "Length"
-            elif dims == '[mass]': cat = "Mass"
-            elif dims == '[time]': cat = "Time"
-            elif dims == '[force]': cat = "Force"
-            elif dims == '[energy]': cat = "Energy"
-            else: cat = dims # Custom or compound
-            
-            return converted.magnitude, cat
-        except Exception:
-            pass # Fall back to manual if Pint fails or unknown unit
+        # STEP 2: Lazy Case Check (Essential for Usability)
+        # If strict failed, we assume user meant a non-standard/lazy unit (like 'slug', 'ton', 'btu')
+        # converting everything to lowercase catches "SLUG", "Slug", "Ton", etc.
+        try:
+            qty = ureg.Quantity(val, u_from_str.lower())
+            converted = qty.to(u_to_str.lower())
+            return format_pint_result(converted)
+        except:
+            pass # Fall through to Manual Fallback if both fail
 
     # ALGORITHM METHOD 2: MANUAL FALLBACK (The "Simple" Way)
+    # Used if Pint is missing or if input is completely weird
     u_from = u_from_str.lower().replace(" ", "")
     u_to = u_to_str.lower().replace(" ", "")
     
@@ -163,6 +175,18 @@ def perform_conversion_smart(val, u_from_str, u_to_str):
             return final_val, category
             
     return None, None
+
+def format_pint_result(quant):
+    # Helper to pretty print category from Pint dimensions
+    dims = str(quant.dimensionality)
+    if dims == '[temperature]': cat = "Temperature"
+    elif dims == '[length]': cat = "Length"
+    elif dims == '[mass]': cat = "Mass"
+    elif dims == '[time]': cat = "Time"
+    elif dims == '[force]': cat = "Force"
+    elif dims == '[energy]': cat = "Energy"
+    else: cat = dims
+    return quant.magnitude, cat
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
@@ -491,6 +515,22 @@ def display_answer(label, exact_val, warning=None):
 
 # --- MAIN LAYOUT ---
 history_container = st.container()
+
+# --- INPUT SYSTEM (RAM ONLY) ---
+# We now load from st.session_state.history_cache INSTEAD of a file
+user_input = st.text_area("Raw Input Log", height=300, value=st.session_state.history_cache, help="Edit this to modify past commands")
+
+# Update cache if user types something
+if user_input != st.session_state.history_cache:
+    st.session_state.history_cache = user_input
+    # NEW: INTERCEPT 'CLEAR' COMMAND
+    if user_input.strip().lower().endswith("clear"):
+        st.session_state.history_cache = ""
+        st.rerun()
+    st.rerun()
+
+if st.button("🔄 Rerun Log", use_container_width=True):
+    st.rerun()
 
 # --- WELCOME SCREEN ---
 if not st.session_state.history_cache:
@@ -836,12 +876,13 @@ for i, line in enumerate(lines):
         with history_container:
             st.error(f"⚠️ Error processing '{line}': {e}")
 
-# --- INPUT BAR ---
+# --- INPUT BAR (RESTORED) ---
 new_cmd = st.chat_input("⚡ Type math here (e.g., 'lap y''+y=0', '14.7 psi to kPa')")
 if new_cmd:
     if new_cmd.strip().lower() == "clear":
         st.session_state.history_cache = ""
-        # Don't touch log_area_widget here, it syncs at start of next run
+        # Don't touch log_area_widget here to avoid error.
+        # It will update on the next run because of the sync logic at the top.
     else:
         if st.session_state.history_cache:
             st.session_state.history_cache += "\n" + new_cmd
