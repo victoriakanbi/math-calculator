@@ -2,5 +2,5 @@ streamlit
 pandas
 numpy
 sympy
-python-docx
 plotly
+Pint
