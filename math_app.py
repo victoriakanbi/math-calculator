@@ -113,19 +113,65 @@ CONSTANTS = {
 }
 
 # --- 4. UNIT CONVERSION LOGIC ---
-UNIT_CATEGORIES = {
-    "Length": {"m": 1.0, "cm": 0.01, "mm": 0.001, "km": 1000.0, "um": 1e-6, "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344},
-    "Mass": {"kg": 1.0, "g": 0.001, "mg": 1e-6, "tonne": 1000.0, "lbm": 0.45359237, "slug": 14.5939, "oz": 0.0283495},
-    "Force": {"n": 1.0, "kn": 1000.0, "mn": 1e6, "lbf": 4.448222, "kip": 4448.22, "dyn": 1e-5},
-    "Pressure": {"pa": 1.0, "kpa": 1000.0, "mpa": 1e6, "gpa": 1e9, "bar": 1e5, "atm": 101325.0, "psi": 6894.757, "torr": 133.322, "mmhg": 133.322},
-    "Energy": {"j": 1.0, "kj": 1000.0, "mj": 1e6, "cal": 4.184, "kcal": 4184.0, "btu": 1055.056, "kwh": 3.6e6, "ev": 1.60218e-19},
-    "Power": {"w": 1.0, "kw": 1000.0, "mw": 1e6, "hp": 745.7, "hp_met": 735.5},
-    "Volume": {"m3": 1.0, "cm3": 1e-6, "mm3": 1e-9, "l": 0.001, "ml": 1e-6, "gal": 0.00378541, "ft3": 0.0283168, "in3": 1.6387e-5},
-    "Area": {"m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "km2": 1e6, "ha": 10000.0, "ft2": 0.092903, "in2": 0.00064516, "acre": 4046.86},
-    "Speed": {"mps": 1.0, "m/s": 1.0, "kph": 0.277778, "km/h": 0.277778, "mph": 0.44704, "kn": 0.514444},
+
+# 4a. SI PREFIXES
+PREFIXES = {
+    'Y': 1e24, 'Z': 1e21, 'E': 1e18, 'P': 1e15, 'T': 1e12, 'G': 1e9, 'M': 1e6, 'k': 1e3, 
+    'h': 1e2, 'da': 1e1, 'd': 1e-1, 'c': 1e-2, 'm': 1e-3, 'u': 1e-6, 'n': 1e-9, 'p': 1e-12, 
+    'f': 1e-15, 'a': 1e-18, 'z': 1e-21, 'y': 1e-24
 }
 
+# 4b. UNIT CATEGORIES (Case Sensitive keys now)
+UNIT_CATEGORIES = {
+    "Length": {"m": 1.0, "cm": 0.01, "mm": 0.001, "km": 1000.0, "um": 1e-6, "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344},
+    "Mass": {"kg": 1.0, "g": 0.001, "lb": 0.45359237, "slug": 14.5939, "oz": 0.0283495, "ton": 907.185, "tonne": 1000.0},
+    "Force": {"N": 1.0, "lbf": 4.448222, "kip": 4448.22, "dyn": 1e-5},
+    "Pressure": {"Pa": 1.0, "bar": 1e5, "atm": 101325.0, "psi": 6894.757, "Torr": 133.322, "mmHg": 133.322},
+    "Energy": {"J": 1.0, "cal": 4.184, "Btu": 1055.056, "Wh": 3600.0, "eV": 1.60218e-19},
+    "Power": {"W": 1.0, "hp": 745.7},
+    "Volume": {"m3": 1.0, "L": 0.001, "gal": 0.00378541, "ft3": 0.0283168, "in3": 1.6387e-5},
+    "Area": {"m2": 1.0, "ha": 10000.0, "ft2": 0.092903, "in2": 0.00064516, "acre": 4046.86},
+    "Speed": {"m/s": 1.0, "km/h": 0.277778, "mph": 0.44704, "kn": 0.514444},
+    "Time": {"s": 1.0, "min": 60.0, "h": 3600.0, "d": 86400.0, "y": 31536000.0}
+}
+
+def resolve_unit_factor(u_str):
+    """
+    Finds the conversion factor and category for a given unit string.
+    Supports prefixes (e.g., 'MPa' finds 'Pa' and applies 'M' factor).
+    """
+    u_str = u_str.strip()
+    
+    # 1. Try Exact Match First
+    for cat, units in UNIT_CATEGORIES.items():
+        if u_str in units:
+            return units[u_str], cat
+            
+    # 2. Try Prefix + Match (e.g. "nm" -> "n" + "m")
+    if len(u_str) > 1:
+        first_char = u_str[0] # Single char prefixes (k, m, M, n...)
+        two_chars = u_str[:2] # Two char prefixes (da)
+        
+        # Check 'da' first
+        if two_chars in PREFIXES:
+            base = u_str[2:]
+            prefix_val = PREFIXES[two_chars]
+            for cat, units in UNIT_CATEGORIES.items():
+                if base in units:
+                    return units[base] * prefix_val, cat
+
+        # Check single char prefix
+        if first_char in PREFIXES:
+            base = u_str[1:]
+            prefix_val = PREFIXES[first_char]
+            for cat, units in UNIT_CATEGORIES.items():
+                if base in units:
+                    return units[base] * prefix_val, cat
+                    
+    return None, None
+
 def perform_conversion(val, u_from_str, u_to_str):
+    # 1. ROBUST METHOD (Pint)
     if ureg:
         try:
             qty_str = f"{val} * {u_from_str}"
@@ -141,26 +187,33 @@ def perform_conversion(val, u_from_str, u_to_str):
         except Exception:
             pass
 
-    u_from = u_from_str.lower().replace(" ", "")
-    u_to = u_to_str.lower().replace(" ", "")
-    
-    temps = ['c', 'f', 'k', 'r']
-    if u_from in temps and u_to in temps:
-        if u_from == 'c': k = val + 273.15
-        elif u_from == 'f': k = (val - 32) * 5/9 + 273.15
-        elif u_from == 'r': k = val * 5/9
-        elif u_from == 'k': k = val
-        if u_to == 'c': return k - 273.15, "Temperature"
-        elif u_to == 'f': return (k - 273.15) * 9/5 + 32, "Temperature"
-        elif u_to == 'r': return k * 9/5, "Temperature"
-        elif u_to == 'k': return k, "Temperature"
+    # 2. MANUAL METHOD (With Prefixes)
+    # Special Temp Handling (Absolute only for simplicty)
+    temps = {'C', 'F', 'K', 'R'}
+    if u_from_str in temps and u_to_str in temps:
+        # Normalize to Kelvin
+        k = val
+        if u_from_str == 'C': k = val + 273.15
+        elif u_from_str == 'F': k = (val - 32) * 5/9 + 273.15
+        elif u_from_str == 'R': k = val * 5/9
         
-    for category, units in UNIT_CATEGORIES.items():
-        if u_from in units and u_to in units:
-            base_val = val * units[u_from]
-            final_val = base_val / units[u_to]
-            return final_val, category
-            
+        # Output
+        if u_to_str == 'C': return k - 273.15, "Temperature"
+        elif u_to_str == 'F': return (k - 273.15) * 9/5 + 32, "Temperature"
+        elif u_to_str == 'R': return k * 9/5, "Temperature"
+        elif u_to_str == 'K': return k, "Temperature"
+
+    # General Units
+    factor_from, cat_from = resolve_unit_factor(u_from_str)
+    factor_to, cat_to = resolve_unit_factor(u_to_str)
+    
+    if factor_from is not None and factor_to is not None:
+        if cat_from == cat_to:
+            # Convert to base then to target
+            base_val = val * factor_from
+            final_val = base_val / factor_to
+            return final_val, cat_from
+
     return None, None
 
 # --- SIDEBAR CONTROLS ---
@@ -213,16 +266,17 @@ with st.sidebar:
             st.success("✅ Conversions are case sensitive")
         else:
             st.warning("⚠️ Basic Mode (Install `pint` for robust units)")
+            st.markdown("Prefixes supported: `n` (nano), `u` (micro), `m` (milli), `k` (kilo), `M` (Mega), `G` (Giga), etc.")
             
         with st.expander("View Unit Keys (Basic Mode)", expanded=False):
             st.markdown("""
-            **Pres:** `Pa, kPa, MPa, psi, atm, bar, mmHg`  
-            **Vol:** `m3, ft3, in3, L, mL, gal`  
-            **Len:** `m, ft, in, km, mi, yd`  
-            **Mass:** `kg, g, lbm, slug, tonne`  
-            **Force:** `N, kN, lbf, kip`  
-            **Energy:** `J, kJ, Btu, cal, kWh, eV`  
-            **Power:** `W, kW, hp`  
+            **Pres:** `Pa, bar, atm, psi, Torr, mmHg`  
+            **Vol:** `m3, ft3, in3, L, gal`  
+            **Len:** `m, ft, in, mi, yd`  
+            **Mass:** `kg, g, lb, slug, ton`  
+            **Force:** `N, lbf, kip`  
+            **Energy:** `J, cal, Btu, Wh, eV`  
+            **Power:** `W, hp`  
             **Temp:** `C, F, K, R`
             """)
         st.divider()
@@ -241,7 +295,7 @@ with st.sidebar:
         | :--- | :--- | :--- |
         | **Logarithms** | `ln` is base $e$, `log` is base 10 | `ln(e)`, `log(100)`, `log2(8)` |
         | **Clear** | Wipes history immediately | `clear` |
-        | **Convert** | Convert units (Implicit supported) | `1 m/s^2 to km/h^2` |
+        | **Convert** | Convert units (Prefixes supported) | `50 MPa to psi`, `1 nm to m` |
         | **Temp** | Temperature conversion | `100 F to C` |
         | **Laplace** | Laplace ($t \\to s$) or ODE | `lap t^2` or `lap y''+y=0, y(0)=1` |
         | **Inv Lap** | Inverse Laplace ($s \\to t$) | `ilap 1/s^2` |
@@ -314,7 +368,6 @@ def np_heaviside(x): return np.heaviside(x, 1)
 def np_delta(x): return np.zeros_like(x) 
 
 # --- NUMERIC LOG LOGIC ---
-# Custom log that defaults to base 10 if 1 argument is given, else base b
 def smart_np_log(x, b=10):
     return np.log(x) / np.log(b)
 
@@ -336,7 +389,6 @@ for cat in CONSTANTS.values():
 letters = string.ascii_letters
 sym_memory = {letter: sp.Symbol(letter) for letter in letters}
 
-# Custom symbolic log: defaults to base 10 if 1 arg
 def smart_sp_log(x, b=10):
     return sp.log(x, b)
 
@@ -392,10 +444,7 @@ def smart_parse(text):
 def clean_input(text):
     text = text.replace("^", "**")
     # Intelligent Log Regex: Convert logN(x) -> log(x, N)
-    # e.g., log2(4) -> log(4, 2)
-    # This captures 'log' followed by digits, then a parenthesis
     text = re.sub(r'\blog(\d+)\(([^)]+)\)', r'log(\2, \1)', text)
-    
     text = re.sub(r'(\d)([a-zA-Z\(])', r'\1*\2', text)
     text = re.sub(r'(\))([a-zA-Z\d\(])', r'\1*\2', text)
     text = re.sub(r'\bas\b', 'a*s', text)
@@ -447,12 +496,9 @@ def display_answer(label, exact_val, warning=None):
             st.markdown(f"**{label}**")
             if warning: st.caption(f"⚠️ {warning}")
             
-            # --- INTELLIGENT LOG DISPLAY ---
-            # SymPy renders 'log' (natural) as \log. We force \ln.
-            # Base 10 logs render as \log(x)/\log(10). This becomes \ln(x)/\ln(10).
             try: 
                 latex_str = sp.latex(exact_val)
-                latex_str = latex_str.replace("\\log", "\\ln") # Force natural log to display as ln
+                latex_str = latex_str.replace("\\log", "\\ln") 
                 latex_str = latex_str.replace("\\theta", "\\text{step}").replace("\\delta", "\\delta")
             except: 
                 latex_str = str(exact_val)
@@ -587,6 +633,7 @@ for i, line in enumerate(lines):
                     val_str = match.group(1).strip()
                     if val_str.endswith('*'): val_str = val_str[:-1] 
                     val = float(eval(val_str, {}, {}))
+                    # NO LOWERCASE HERE to preserve prefixes like 'M' vs 'm'
                     u_from = match.group(2).strip()
                     u_to = match.group(3).strip()
                     res, cat_name = perform_conversion(val, u_from, u_to)
@@ -596,7 +643,7 @@ for i, line in enumerate(lines):
                         if res is not None:
                             c_res.metric(f"Convert [{cat_name}]", f"{format_number(res)} {u_to}", f"{raw_content}")
                             st.session_state.ans = res 
-                        else: c_res.error(f"Cannot convert '{u_from}' to '{u_to}'.")
+                        else: c_res.error(f"Cannot convert '{u_from}' to '{u_to}'. Check case sensitivity (e.g., 'm' vs 'M').")
                 except ValueError:
                     with history_container: st.error("Error parsing number in conversion.")
             else:
