@@ -4,3 +4,5 @@ numpy
 sympy
 plotly
 Pint
+scipy
+statsmodels
