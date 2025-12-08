@@ -41,42 +41,71 @@ st.markdown("""
     .stAlert {padding: 0.5rem;}
     .stButton button {padding: 0px 10px;} 
 
-    /* NAVIGATION MENU STYLING */
-    
-    /* Remove default label from radio */
-    div[data-testid="stRadio"] > label {
-        display: none !important; 
-    }
-    
-    /* Style the radio buttons to look like a menu list */
-    div[data-testid="stRadio"] div[role="radiogroup"] label {
-        background-color: #f8f9fa; /* Light grey background */
-        padding: 10px 15px;
-        border-radius: 6px;
-        margin-bottom: 5px;
-        border: 1px solid #eee;
+    /* --- NAVIGATION MENU (Card Style) --- */
+    div[role="radiogroup"] label {
+        background-color: #ffffff;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        border: 1px solid #e0e0e0;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         font-weight: 500;
-        transition: all 0.2s;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+        width: 100%;
+        display: flex;
     }
-
-    /* Hover effect */
-    div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
-        background-color: #fff;
+    div[role="radiogroup"] label:hover {
+        background-color: #fff5f5;
         border-color: #FF4B4B;
         color: #FF4B4B !important;
-        transform: translateX(3px); /* Subtle slide */
+        transform: translateX(5px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-
-    /* Active State (Selected) */
-    div[data-testid="stRadio"] div[role="radiogroup"] [data-checked="true"] + div {
-        color: #FF4B4B !important;
-        font-weight: bold;
-    }
-    
-    /* Selected container highlight */
     div[role="radiogroup"] label:has(div[data-checked="true"]) {
-        border-color: #FF4B4B;
-        background-color: #fff0f0;
+        background-color: #FF4B4B !important;
+        border-color: #FF4B4B !important;
+        color: white !important;
+        transform: translateX(5px);
+        box-shadow: 0 2px 5px rgba(255, 75, 75, 0.3);
+    }
+    div[role="radiogroup"] label:has(div[data-checked="true"]) * {
+        color: white !important;
+        font-weight: 600;
+    }
+    div[role="radiogroup"] label > div:first-child {
+        display: none;
+    }
+
+    /* --- REVERT STYLE FOR "RADIANS/DEGREES" --- */
+    div[role="radiogroup"]:has(label:nth-last-child(2):first-child) label {
+        background-color: transparent !important;
+        padding: 0px !important;
+        border: none !important;
+        box-shadow: none !important;
+        margin-bottom: 0px !important;
+        display: inline-flex;
+        width: auto;
+        transform: none !important;
+    }
+    div[role="radiogroup"]:has(label:nth-last-child(2):first-child) label:hover {
+        background-color: transparent !important;
+        border-color: transparent !important;
+        color: inherit !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    div[role="radiogroup"]:has(label:nth-last-child(2):first-child) label > div:first-child {
+        display: flex !important;
+    }
+    div[role="radiogroup"]:has(label:nth-last-child(2):first-child) label:has(div[data-checked="true"]) {
+        background-color: transparent !important;
+    }
+    div[role="radiogroup"]:has(label:nth-last-child(2):first-child) label:has(div[data-checked="true"]) * {
+        color: inherit !important;
+    }
+    section[data-testid="stSidebar"] div.stExpander div[data-testid="stRadio"] > label {
+        display: none !important;
     }
 
     /* PRINT STYLING */
@@ -227,7 +256,6 @@ def parse_data_input(input_str):
 with st.sidebar:
     st.header("🧮 Victor's Calculator")
     
-    # === NEW: COLLAPSIBLE NAVIGATION MENU ===
     with st.expander("📱 Navigation", expanded=True):
         app_mode = st.radio(
             "App Mode", 
@@ -772,59 +800,94 @@ elif app_mode == "🧪 Formula Solver":
                             val = st.number_input(f"{s_name}", value=0.0, key=f"input_{s_name}")
                             known_values[sym_map[s_name]] = val
                 with c_res:
-                    solutions = sp.solve(eq, target_sym)
-                    if not solutions: st.error("Cannot isolate target variable.")
-                    else:
-                        sol_eq = solutions[0]
-                        st.info("Isolated Formula:")
-                        st.latex(f"{target_str} = " + sp.latex(sol_eq))
-                        final_res = sol_eq.subs(known_values).evalf()
-                        st.success("Calculated Value:")
-                        st.metric(label=f"{target_str}", value=format_number(final_res))
-                        if st.button("💾 Save to Log", use_container_width=True):
-                            input_str = ", ".join([f"{k}={v}" for k, v in known_values.items()])
-                            log_entry = f"Formula: {raw_formula} (Solved for {target_str}) | Inputs: {input_str} | Result: {final_res}"
-                            if st.session_state.history_cache: st.session_state.history_cache += "\n" + log_entry
-                            else: st.session_state.history_cache = log_entry
-                            st.toast("✅ Saved!")
+                    st.markdown("#### 4. Result")
+                    try:
+                        solutions = sp.solve(eq, target_sym)
+                        if not solutions:
+                            st.error("Cannot isolate target variable.")
+                        else:
+                            results_cache = []
+                            for i, sol_eq in enumerate(solutions, 1):
+                                st.markdown(f"**Solution {i}:**")
+                                st.latex(f"{target_str} = " + sp.latex(sol_eq))
+                                try:
+                                    final_res = sol_eq.subs(known_values).evalf()
+                                    res_str = format_number(final_res)
+                                    st.info(f"Value: {res_str}")
+                                    results_cache.append((sp.latex(sol_eq), res_str))
+                                except Exception as e:
+                                    st.warning(f"Could not evaluate numerically: {e}")
+
+                            if st.button("💾 Save Results to Log", use_container_width=True):
+                                input_str = ", ".join([f"{k}={v}" for k, v in known_values.items()])
+                                log_entry = f"Formula: {raw_formula} (Solved for {target_str}) | Inputs: {input_str}"
+                                for idx, (sym_res, num_res) in enumerate(results_cache, 1):
+                                    log_entry += f" | Sol {idx}: {num_res}"
+                                if st.session_state.history_cache:
+                                    st.session_state.history_cache += "\n" + log_entry
+                                else:
+                                    st.session_state.history_cache = log_entry
+                                st.toast("✅ Saved calculations to Session History!")
+                    except Exception as e:
+                        st.error(f"Calculation Error: {e}")
             else: st.warning("Please enter an equation with an '=' sign.")
         except Exception as e: st.error(f"Error: {e}")
 
-# === NEW: GRAPHING MODE ===
+# === NEW: UPGRADED GRAPHING MODE ===
 elif app_mode == "📈 Graphing":
-    st.title("📈 Graphing Tool")
+    st.title("📈 Advanced Graphing")
     
     col_ctrl, col_plot = st.columns([1, 3])
     
     with col_ctrl:
         st.subheader("Functions")
-        raw_funcs = st.text_area("Enter equations (one per line):", "sin(x)\nx^2 + y^2 = 9\ny = 0.5*x - 1", height=150)
+        raw_funcs = st.text_area("Enter equations (one per line):", value="", height=150, placeholder="e.g. sin(x)")
         
         st.subheader("Settings")
+        autoscale = st.checkbox("Autoscale Y-Axis", value=True)
         show_grid = st.checkbox("Show Grid", value=True)
         show_intersections = st.checkbox("Show Intersections", value=True)
         
+        st.caption("Parametric Range (t): Uses X-Min/Max from Sidebar.")
+        
+        st.divider()
         st.subheader("Trace")
         trace_val = st.number_input("Evaluate at x =", value=0.0)
+        trace_container = st.empty()
         
     with col_plot:
-        # Plotting Logic (Reused from Chat Mode but adapted)
         if raw_funcs:
             funcs = [f.strip() for f in raw_funcs.split('\n') if f.strip()]
             x_vals = np.linspace(st.session_state.min_x, st.session_state.max_x, 1000)
-            step = st.session_state.table_step
             
             fig = go.Figure()
             y_arrays_plot = []
             valid_funcs = []
+            all_y_values = []
             
-            COLOR_CYCLE = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A']
+            df_data = pd.DataFrame({'x': x_vals})
+            COLOR_CYCLE = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692']
             
             for idx, func_str in enumerate(funcs):
-                clean_f = clean_input(func_str)
                 line_color = COLOR_CYCLE[idx % len(COLOR_CYCLE)]
-                
-                # Implicit Check
+                param_match = re.match(r"\((.+),(.+)\)", func_str)
+                if param_match:
+                    try:
+                        xt_str, yt_str = param_match.groups()
+                        xt_expr = smart_parse(xt_str)
+                        yt_expr = smart_parse(yt_str)
+                        lam_xt = sp.lambdify(sym_memory['t'], xt_expr, modules=["numpy", calc_memory])
+                        lam_yt = sp.lambdify(sym_memory['t'], yt_expr, modules=["numpy", calc_memory])
+                        x_p = lam_xt(x_vals)
+                        y_p = lam_yt(x_vals)
+                        if isinstance(x_p, (int, float)): x_p = np.full_like(x_vals, float(x_p))
+                        if isinstance(y_p, (int, float)): y_p = np.full_like(x_vals, float(y_p))
+                        fig.add_trace(go.Scatter(x=x_p, y=y_p, mode='lines', name=f"Param: {func_str}", line=dict(color=line_color)))
+                        all_y_values.extend(y_p)
+                    except: pass
+                    continue
+
+                clean_f = clean_input(func_str)
                 if "=" in clean_f and not (clean_f.startswith("y=") or clean_f.endswith("=y")):
                     try:
                         l, r = clean_f.split("=")
@@ -837,22 +900,19 @@ elif app_mode == "📈 Graphing":
                         fig.add_trace(go.Contour(z=Z, x=feature_x, y=feature_y, contours=dict(start=0, end=0, size=2, coloring='lines'), line=dict(width=2, color=line_color), showscale=False, name=clean_f))
                     except: pass
                 else:
-                    # Explicit
                     if "=" in clean_f: clean_f = clean_f.split("=")[1]
                     try:
                         sym_expr = smart_parse(clean_f)
                         lam_f = sp.lambdify(sym_memory['x'], sym_expr, modules=["numpy", calc_memory])
                         y_plot = lam_f(x_vals)
-                        
-                        # Scalar fix
                         if isinstance(y_plot, (int, float)): y_plot = np.full_like(x_vals, float(y_plot))
-                        
                         fig.add_trace(go.Scatter(x=x_vals, y=y_plot, mode='lines', name=clean_f, line=dict(color=line_color)))
                         y_arrays_plot.append(y_plot)
                         valid_funcs.append((clean_f, lam_f))
+                        all_y_values.extend(y_plot)
+                        df_data[clean_f] = y_plot
                     except: pass
             
-            # Intersections
             if show_intersections and len(y_arrays_plot) > 1:
                 intersect_x, intersect_y = [], []
                 for j in range(len(y_arrays_plot)):
@@ -870,29 +930,34 @@ elif app_mode == "📈 Graphing":
                 if intersect_x:
                     fig.add_trace(go.Scatter(x=intersect_x, y=intersect_y, mode='markers', marker=dict(color='red', size=10, line=dict(width=2, color='black')), name='Intersections'))
 
-            # Layout
-            fig.update_layout(
-                xaxis_title="x", yaxis_title="y", 
-                yaxis_range=[st.session_state.min_y, st.session_state.max_y], 
-                height=600,
-                showlegend=True
-            )
+            layout_args = dict(xaxis_title="x", yaxis_title="y", height=600, showlegend=True, hovermode="x unified")
+            if autoscale and all_y_values:
+                clean_y = [y for y in all_y_values if np.isfinite(y)]
+                if clean_y:
+                    y_min, y_max = min(clean_y), max(clean_y)
+                    padding = (y_max - y_min) * 0.1 if y_max != y_min else 1.0
+                    layout_args['yaxis_range'] = [y_min - padding, y_max + padding]
+            else:
+                layout_args['yaxis_range'] = [st.session_state.min_y, st.session_state.max_y]
+
+            fig.update_layout(**layout_args)
             if not show_grid:
                 fig.update_xaxes(showgrid=False)
                 fig.update_yaxes(showgrid=False)
                 
             st.plotly_chart(fig, use_container_width=True)
             
-            # Trace Result
+            with st.expander("📄 Data Table", expanded=False):
+                st.dataframe(df_data, use_container_width=True)
+            
             if valid_funcs:
-                st.markdown("#### 🎯 Trace Results")
-                trace_res = []
-                for f_name, f_lam in valid_funcs:
-                    try:
-                        val = f_lam(trace_val)
-                        trace_res.append(f"**{f_name}**: {format_number(val)}")
-                    except: pass
-                st.write(" | ".join(trace_res))
+                with trace_container.container():
+                    st.markdown("#### Results")
+                    for f_name, f_lam in valid_funcs:
+                        try:
+                            val = f_lam(trace_val)
+                            st.write(f"**{f_name}**: {format_number(val)}")
+                        except: pass
 
 elif app_mode == "📊 Statistics":
     st.title("📊 Statistics Suite")
